@@ -7,8 +7,9 @@
  * (GSAP-Stagger) und brennen danach ENDLOS:
  *
  * - Text3D mit Diablo-Font (Exocet-Stil, lokal als typeface.json)
- * - Verkohltes Material: fast schwarz, mit orange glühendem Emissive
- *   und permanentem Glut-Flackern (kein Ende)
+ * - Zwei Materialien pro Buchstabe (wie im Original-Artwork):
+ *   Flächen = pechschwarz, Kanten/Bevel = glühender Feuer-Outline
+ *   mit permanentem Glut-Flackern (kein Ende)
  * - Prozeduraler Feuer-Shader (FBM-Noise) als Flammen-Plane pro
  *   Buchstabe — additiv geblendet, loopt unendlich
  * - Aufsteigende Glut-Funken (Sparkles), warme Feuer-Beleuchtung
@@ -136,11 +137,12 @@ function LetterFlame({
     matRef.current.uniforms.uFade.value = fadeRef.current?.value ?? 0;
   });
 
-  const W = Math.max(width * 2.1, 1.2);
-  const H = 2.4;
+  /* Schmal halten: Flammen lodern AUS dem Buchstaben, keine Feuerwand */
+  const W = Math.max(width * 1.25, 0.7);
+  const H = 2.0;
 
   return (
-    <mesh position={[0, H / 2 - CAP_HEIGHT * 0.55, -DEPTH * 0.7]}>
+    <mesh position={[0, H / 2 - CAP_HEIGHT * 0.45, -DEPTH * 0.8]}>
       <planeGeometry args={[W, H]} />
       <shaderMaterial
         ref={matRef}
@@ -255,7 +257,10 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
   }, [font]);
 
   const groupRefs = useRef<(THREE.Group | null)[]>([]);
-  const materialRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  /** Material der Vorder-/Rückseite: pechschwarz (Diablo-Look) */
+  const faceMaterialRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  /** Material der Kanten/Bevels: glühender Feuer-Rand */
+  const edgeMaterialRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
   /** Gemeinsamer Fade-Wert für alle Flammen (folgt dem Buchstaben-Fade) */
   const flameFade = useRef({ value: 0 });
   const wrapperRef = useRef<THREE.Group>(null);
@@ -284,9 +289,6 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
   /* GSAP-Intro: Stagger-Flug in die finale Position */
   useEffect(() => {
     const groups = groupRefs.current.filter(Boolean) as THREE.Group[];
-    const materials = materialRefs.current.filter(
-      Boolean
-    ) as THREE.MeshStandardMaterial[];
     if (groups.length === 0) return;
 
     const ctx = gsap.context(() => {
@@ -301,10 +303,14 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
       groups.forEach((group, i) => {
         const s = scatter[i];
+        const faceMat = faceMaterialRefs.current[i];
+        const edgeMat = edgeMaterialRefs.current[i];
+
         group.position.set(s.x, s.y, s.z);
         group.rotation.set(s.rotX, s.rotY, s.rotZ);
         group.scale.setScalar(0.55);
-        if (materials[i]) materials[i].opacity = 0;
+        if (faceMat) faceMat.opacity = 0;
+        if (edgeMat) edgeMat.opacity = 0;
 
         const at = i * 0.085;
         tl.to(group.position, { x: 0, y: 0, z: 0, duration: 2.1 }, at)
@@ -313,25 +319,34 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
             group.scale,
             { x: 1, y: 1, z: 1, duration: 1.9, ease: "power3.out" },
             at
-          )
-          .to(
-            materials[i],
+          );
+
+        if (faceMat) {
+          tl.to(
+            faceMat,
             { opacity: 1, duration: 1.4, ease: "power2.out" },
             at + 0.12
           );
+        }
 
-        /* Entzünden: heftiges Aufglühen beim Andocken */
-        if (materials[i]) {
-          materials[i].emissiveIntensity = 0;
+        /* Entzünden: Der glühende Rand flammt beim Andocken heftig auf */
+        if (edgeMat) {
+          edgeMat.emissiveIntensity = 0.4;
           tl.to(
-            materials[i],
-            { emissiveIntensity: 2.2, duration: 0.25, ease: "power2.in" },
-            at + 1.35
-          ).to(
-            materials[i],
-            { emissiveIntensity: 0.9, duration: 0.9, ease: "power2.out" },
-            at + 1.6
-          );
+            edgeMat,
+            { opacity: 1, duration: 1.4, ease: "power2.out" },
+            at + 0.12
+          )
+            .to(
+              edgeMat,
+              { emissiveIntensity: 5.5, duration: 0.25, ease: "power2.in" },
+              at + 1.35
+            )
+            .to(
+              edgeMat,
+              { emissiveIntensity: 2.6, duration: 0.9, ease: "power2.out" },
+              at + 1.6
+            );
         }
       });
 
@@ -359,15 +374,15 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
     /* Permanentes Feuer-Flackern der Glut-Ränder nach dem Intro */
     if (introDone.current) {
-      materialRefs.current.forEach((mat, i) => {
+      edgeMaterialRefs.current.forEach((mat, i) => {
         if (!mat) return;
         const s = flickerSeeds[i];
         const flicker =
-          0.9 +
-          Math.sin(t * s * 2.1 + i * 1.7) * 0.18 +
-          Math.sin(t * s * 5.3 + i * 0.9) * 0.1 +
-          Math.sin(t * s * 11.7 + i * 2.3) * 0.05;
-        mat.emissiveIntensity = Math.max(0.45, flicker);
+          2.6 +
+          Math.sin(t * s * 2.1 + i * 1.7) * 0.55 +
+          Math.sin(t * s * 5.3 + i * 0.9) * 0.3 +
+          Math.sin(t * s * 11.7 + i * 2.3) * 0.15;
+        mat.emissiveIntensity = Math.max(1.4, flicker);
       });
     }
 
@@ -406,21 +421,37 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
                   height={DEPTH}
                   curveSegments={20}
                   bevelEnabled
-                  bevelThickness={0.03}
-                  bevelSize={0.016}
-                  bevelSegments={6}
+                  bevelThickness={0.035}
+                  bevelSize={0.02}
+                  bevelSegments={5}
                 >
                   {letter.char}
-                  {/* Verkohlt-glühendes Material (Diablo-Look) */}
+                  {/* Slot 0 — Vorder-/Rückseite: pechschwarz wie im Original */}
                   <meshStandardMaterial
+                    attach="material-0"
                     ref={(el) => {
-                      materialRefs.current[i] = el;
+                      faceMaterialRefs.current[i] = el;
                     }}
-                    color="#160a05"
-                    metalness={0.25}
-                    roughness={0.55}
-                    emissive="#ff5a00"
+                    color="#050302"
+                    metalness={0.3}
+                    roughness={0.75}
+                    emissive="#1a0400"
+                    emissiveIntensity={0.5}
+                    transparent
+                    opacity={0}
+                  />
+                  {/* Slot 1 — Kanten & Bevel: glühender Feuer-Outline */}
+                  <meshStandardMaterial
+                    attach="material-1"
+                    ref={(el) => {
+                      edgeMaterialRefs.current[i] = el;
+                    }}
+                    color="#301004"
+                    metalness={0.1}
+                    roughness={0.4}
+                    emissive="#ff7a1a"
                     emissiveIntensity={0}
+                    toneMapped={false}
                     transparent
                     opacity={0}
                   />
@@ -470,12 +501,13 @@ function CameraRig() {
 function FireLighting() {
   const flickerLight = useRef<THREE.PointLight>(null);
 
-  /* Zentrales Feuerlicht flackert endlos — beleuchtet die Buchstaben von vorn */
+  /* Dezentes Feuerlicht flackert endlos — die Flächen bleiben trotzdem
+     pechschwarz (dunkles Albedo), nur die Kanten fangen das Licht */
   useFrame((state) => {
     if (!flickerLight.current) return;
     const t = state.clock.elapsedTime;
     flickerLight.current.intensity =
-      26 + Math.sin(t * 7.3) * 5 + Math.sin(t * 13.7) * 3 + Math.sin(t * 3.1) * 4;
+      9 + Math.sin(t * 7.3) * 2.2 + Math.sin(t * 13.7) * 1.2 + Math.sin(t * 3.1) * 1.6;
   });
 
   return (
@@ -485,7 +517,7 @@ function FireLighting() {
         position={[0, -6, 4]}
         angle={0.9}
         penumbra={1}
-        intensity={90}
+        intensity={35}
         color="#ff3d00"
       />
       {/* Flackerndes Feuerlicht vor dem Schriftzug */}
@@ -496,15 +528,15 @@ function FireLighting() {
         distance={20}
         decay={1.6}
       />
-      {/* Kühles Gegenlicht von oben für Kanten-Definition */}
+      {/* Dezentes Gegenlicht von oben für Kanten-Definition */}
       <spotLight
         position={[5, 8, 6]}
         angle={0.45}
         penumbra={1}
-        intensity={30}
+        intensity={12}
         color="#ffd9a0"
       />
-      <ambientLight intensity={0.06} color="#ff6a00" />
+      <ambientLight intensity={0.03} color="#ff6a00" />
     </>
   );
 }
