@@ -59,8 +59,8 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
                  border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl
                  transition-[border-color,background-color,box-shadow] duration-500 ease-out
                  hover:border-white/[0.22] hover:bg-white/[0.07]
-                 hover:shadow-[inset_0_0_28px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(255,122,42,0.25)]
-                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7a2a]/60
+                 hover:shadow-[inset_0_0_28px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(120,190,255,0.28)]
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7ec2ff]/60
                  sm:w-64 md:w-72"
       style={{ WebkitTapHighlightColor: "transparent" }}
     >
@@ -70,7 +70,7 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-100"
         style={{
           background:
-            "radial-gradient(120% 90% at 50% 110%, rgba(255,122,42,0.16), transparent 60%)",
+            "radial-gradient(120% 90% at 50% 110%, rgba(120,190,255,0.18), transparent 60%)",
         }}
       />
       {/* Gleitender Licht-Sheen */}
@@ -101,8 +101,8 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full
                      border border-white/[0.1] bg-white/[0.05] text-white/60
                      transition-all duration-500 ease-out
-                     group-hover:translate-x-0.5 group-hover:border-[#ff7a2a]/40
-                     group-hover:bg-[#ff7a2a]/15 group-hover:text-[#ffb066]"
+                     group-hover:translate-x-0.5 group-hover:border-[#7ec2ff]/40
+                     group-hover:bg-[#7ec2ff]/15 group-hover:text-[#bfe3ff]"
         >
           <svg
             width="13"

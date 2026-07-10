@@ -1,19 +1,19 @@
 "use client";
 
 /**
- * Hero3D — Diablo Edition
- * ───────────────────────
+ * Hero3D — Ice Edition
+ * ────────────────────
  * Die Buchstaben von "Flo's Websites" fliegen einzeln aus der Tiefe ein
- * (GSAP-Stagger) und brennen danach ENDLOS:
+ * (GSAP-Stagger) und stehen danach als glasklares Eis da:
  *
- * - Text3D mit Diablo-Font (Exocet-Stil, lokal als typeface.json)
- * - Zwei Materialien pro Buchstabe (wie im Original-Artwork):
- *   Flächen = pechschwarz, Kanten/Bevel = glühender Feuer-Outline
- *   mit permanentem Glut-Flackern (kein Ende)
- * - Prozeduraler Feuer-Shader (FBM-Noise) als Flammen-Plane pro
- *   Buchstabe — additiv geblendet, loopt unendlich
- * - Aufsteigende Glut-Funken (Sparkles), warme Feuer-Beleuchtung
- * - Warp-Streaks & Hintergrund in Feuertönen
+ * - Text3D mit "Ice Kingdom"-Font (lokal als typeface.json)
+ * - Eis-Material: MeshPhysicalMaterial mit Transmission (echtes,
+ *   lichtbrechendes Eis), bläulicher Schimmer, Frost-Rauheit
+ * - Frost-Atem: prozeduraler Nebel-Shader hinter den Buchstaben
+ *   (endloser Loop, wie kalter Dunst)
+ * - Kristall-Schneeflocken: instanzierte 3D-Eiskristalle, die endlos
+ *   sanft herabrieseln und dabei glitzern + funkelnder Schneestaub
+ * - Kühle Winter-Beleuchtung, frostiger Hintergrund
  */
 
 import { useEffect, useMemo, useRef } from "react";
@@ -24,25 +24,25 @@ import gsap from "gsap";
 
 /* ────────────────────────────── Konfiguration ───────────────────────────── */
 
-const FONT_URL = "/fonts/Diablo.typeface.json";
+const FONT_URL = "/fonts/IceKingdom.typeface.json";
 const TEXT = "Flo's Websites";
 const SIZE = 1;
-const DEPTH = 0.22;
-const LETTER_SPACING = 0.08;
+const DEPTH = 0.26;
+const LETTER_SPACING = 0.07;
 const CAP_HEIGHT = 0.72;
 
 useFont.preload(FONT_URL);
 
-/** Deterministischer Pseudo-Zufall → stabile Streupositionen pro Buchstabe */
+/** Deterministischer Pseudo-Zufall → stabile Positionen */
 function seededRandom(seed: number) {
   let s = seed % 2147483647;
   if (s <= 0) s += 2147483646;
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
-/* ─────────────────────────── Feuer-Shader (FBM) ─────────────────────────── */
+/* ──────────────────────── Frost-Nebel (FBM-Shader) ──────────────────────── */
 
-const fireVertexShader = /* glsl */ `
+const mistVertexShader = /* glsl */ `
   varying vec2 vUv;
   void main() {
     vUv = uv;
@@ -50,15 +50,13 @@ const fireVertexShader = /* glsl */ `
   }
 `;
 
-const fireFragmentShader = /* glsl */ `
+const mistFragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uFade;
-  uniform float uSeed;
   varying vec2 vUv;
 
-  /* Hash & Value-Noise */
   float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453123);
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
   }
   float noise(vec2 p) {
     vec2 i = floor(p);
@@ -70,9 +68,9 @@ const fireFragmentShader = /* glsl */ `
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
       v += a * noise(p);
-      p = p * 2.02 + vec2(13.7, 7.3);
+      p = p * 2.03 + vec2(11.3, 5.7);
       a *= 0.5;
     }
     return v;
@@ -80,86 +78,128 @@ const fireFragmentShader = /* glsl */ `
 
   void main() {
     vec2 uv = vUv;
+    /* Kalter Dunst: driftet langsam seitwärts & aufwärts — endlos */
+    float t = uTime * 0.12;
+    vec2 q = vec2(uv.x * 2.4 + t * 0.7, uv.y * 1.6 - t);
+    float n = fbm(q + fbm(q * 1.7 + t * 0.3) * 0.7);
 
-    /* Flammen steigen auf: Noise scrollt endlos nach unten (Modulo-frei,
-       fbm ist unbegrenzt fortsetzbar → nahtloser Endlos-Loop) */
-    float t = uTime * 1.1;
-    vec2 q = vec2(uv.x * 3.0, uv.y * 2.2 - t);
-    float n = fbm(q + fbm(q * 1.6 - t * 0.35) * 0.9);
+    /* Weiche Wolkenform, zu allen Rändern auslaufend */
+    float edge = smoothstep(0.0, 0.3, uv.x) * smoothstep(1.0, 0.7, uv.x)
+               * smoothstep(0.0, 0.25, uv.y) * smoothstep(1.0, 0.7, uv.y);
+    float intensity = smoothstep(0.45, 0.95, n) * edge;
 
-    /* Grundform: unten dicht, nach oben ausgefranst */
-    float base = 1.0 - uv.y;
-    float flame = n * (0.45 + base * 1.15);
+    /* Eisige Farbrampe: tiefblau → hellblau → weiß */
+    vec3 col = mix(vec3(0.35, 0.62, 0.95), vec3(0.85, 0.95, 1.0),
+                   smoothstep(0.3, 0.9, intensity));
 
-    /* Seitliches Auslaufen */
-    float sideFade = smoothstep(0.0, 0.22, uv.x) * smoothstep(1.0, 0.78, uv.x);
-    float bottomFade = smoothstep(0.0, 0.06, uv.y);
-    float intensity = smoothstep(0.42, 1.0, flame) * sideFade * bottomFade;
-
-    /* Feuer-Farbrampe: tiefrot → orange → gelb → weißglühend */
-    vec3 col = vec3(0.0);
-    col = mix(col, vec3(0.55, 0.06, 0.0), smoothstep(0.0, 0.25, intensity));
-    col = mix(col, vec3(1.0, 0.35, 0.02), smoothstep(0.2, 0.55, intensity));
-    col = mix(col, vec3(1.0, 0.75, 0.15), smoothstep(0.5, 0.8, intensity));
-    col = mix(col, vec3(1.0, 0.98, 0.75), smoothstep(0.8, 1.0, intensity));
-
-    float alpha = intensity * uFade;
-    if (alpha < 0.01) discard;
-    gl_FragColor = vec4(col * alpha * 1.6, alpha);
+    float alpha = intensity * 0.32 * uFade;
+    if (alpha < 0.008) discard;
+    gl_FragColor = vec4(col * alpha, alpha);
   }
 `;
 
-/** Flammen-Plane für einen Buchstaben — loopt für immer */
-function LetterFlame({
-  width,
-  seed,
-  fadeRef,
-}: {
-  width: number;
-  seed: number;
-  fadeRef: React.RefObject<{ value: number }>;
-}) {
+/** Frost-Dunst hinter dem gesamten Schriftzug — loopt für immer */
+function FrostMist({ fadeRef }: { fadeRef: React.RefObject<{ value: number }> }) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
-
   const uniforms = useMemo(
-    () => ({
-      uTime: { value: seed * 10.0 },
-      uFade: { value: 0 },
-      uSeed: { value: seed * 37.7 },
-    }),
-    [seed]
+    () => ({ uTime: { value: 0 }, uFade: { value: 0 } }),
+    []
   );
 
   useFrame((_, delta) => {
     if (!matRef.current) return;
-    /* Endlos: Zeit läuft immer weiter, kein Reset, kein Ende */
     matRef.current.uniforms.uTime.value += delta;
     matRef.current.uniforms.uFade.value = fadeRef.current?.value ?? 0;
   });
 
-  /* Schmal halten: Flammen lodern AUS dem Buchstaben, keine Feuerwand */
-  const W = Math.max(width * 1.25, 0.7);
-  const H = 2.0;
-
   return (
-    <mesh position={[0, H / 2 - CAP_HEIGHT * 0.45, -DEPTH * 0.8]}>
-      <planeGeometry args={[W, H]} />
+    <mesh position={[0, 0.1, -1.4]}>
+      <planeGeometry args={[16, 5]} />
       <shaderMaterial
         ref={matRef}
-        vertexShader={fireVertexShader}
-        fragmentShader={fireFragmentShader}
+        vertexShader={mistVertexShader}
+        fragmentShader={mistFragmentShader}
         uniforms={uniforms}
         transparent
         depthWrite={false}
         blending={THREE.AdditiveBlending}
-        side={THREE.DoubleSide}
       />
     </mesh>
   );
 }
 
+/* ─────────────────── Kristall-Schneeflocken (instanziert) ────────────────── */
+/**
+ * Kleine 3D-Eiskristalle (flache Oktaeder), die endlos herabrieseln,
+ * dabei taumeln und im Licht aufblitzen — ein einziger Draw-Call.
+ */
+function CrystalSnow() {
+  const COUNT = 260;
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+
+  const flakes = useMemo(() => {
+    const rand = seededRandom(9182);
+    return Array.from({ length: COUNT }, () => ({
+      x: (rand() - 0.5) * 26,
+      y0: rand() * 14,
+      z: -10 + rand() * 13,
+      fall: 0.25 + rand() * 0.55, // Fallgeschwindigkeit
+      sway: 0.3 + rand() * 0.8, // seitliches Pendeln
+      swayFreq: 0.3 + rand() * 0.7,
+      spinX: (rand() - 0.5) * 1.6,
+      spinY: (rand() - 0.5) * 2.0,
+      scale: 0.02 + rand() * 0.055,
+      phase: rand() * Math.PI * 2,
+    }));
+  }, []);
+
+  useFrame((state) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const t = state.clock.elapsedTime;
+
+    flakes.forEach((f, i) => {
+      /* Endloser Fall: Modulo über die Höhe, kein Anfang, kein Ende */
+      const H = 14;
+      const y = ((f.y0 - f.fall * t) % H + H) % H - H / 2;
+      const x = f.x + Math.sin(t * f.swayFreq + f.phase) * f.sway;
+      dummy.position.set(x, y, f.z);
+      dummy.rotation.set(t * f.spinX + f.phase, t * f.spinY, f.phase);
+      dummy.scale.setScalar(f.scale);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, COUNT]}
+      frustumCulled={false}
+    >
+      {/* Flacher Oktaeder = einfacher Eiskristall */}
+      <octahedronGeometry args={[1, 0]} />
+      <meshPhysicalMaterial
+        color="#dff2ff"
+        metalness={0.1}
+        roughness={0.05}
+        transmission={0.6}
+        thickness={0.4}
+        ior={1.31}
+        transparent
+        opacity={0.85}
+        envMapIntensity={2}
+        emissive="#9fd4ff"
+        emissiveIntensity={0.15}
+      />
+    </instancedMesh>
+  );
+}
+
 /* ────────────────────────────── Warp-Streaks ────────────────────────────── */
-/** Glühende Funken-Streifen, die während des Intros vorbeiziehen */
+/** Eisige Lichtstreifen, die während des Intros vorbeiziehen */
 function WarpStreaks() {
   const COUNT = 64;
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -190,7 +230,7 @@ function WarpStreaks() {
 
     const fadeIn = THREE.MathUtils.clamp(t / 0.6, 0, 1);
     const fadeOut = THREE.MathUtils.clamp(1 - (t - 2.8) / 1.4, 0, 1);
-    mat.opacity = 0.55 * fadeIn * fadeOut;
+    mat.opacity = 0.5 * fadeIn * fadeOut;
 
     if (fadeOut <= 0) {
       mesh.visible = false;
@@ -217,7 +257,7 @@ function WarpStreaks() {
       <boxGeometry args={[1, 1, 1]} />
       <meshBasicMaterial
         ref={matRef}
-        color="#ff7a2a"
+        color="#a8d8ff"
         transparent
         opacity={0}
         depthWrite={false}
@@ -257,18 +297,15 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
   }, [font]);
 
   const groupRefs = useRef<(THREE.Group | null)[]>([]);
-  /** Material der Vorder-/Rückseite: pechschwarz (Diablo-Look) */
-  const faceMaterialRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
-  /** Material der Kanten/Bevels: glühender Feuer-Rand */
-  const edgeMaterialRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
-  /** Gemeinsamer Fade-Wert für alle Flammen (folgt dem Buchstaben-Fade) */
-  const flameFade = useRef({ value: 0 });
+  const materialRefs = useRef<(THREE.MeshPhysicalMaterial | null)[]>([]);
+  /** Gemeinsamer Fade für Frost-Nebel */
+  const mistFade = useRef({ value: 0 });
   const wrapperRef = useRef<THREE.Group>(null);
   const introDone = useRef(false);
-  /** Flacker-Seeds pro Buchstabe */
-  const flickerSeeds = useMemo(() => {
+  /** Glitzer-Seeds pro Buchstabe */
+  const shimmerSeeds = useMemo(() => {
     const rand = seededRandom(777);
-    return layout.map(() => 2 + rand() * 4);
+    return layout.map(() => 1.5 + rand() * 3);
   }, [layout]);
 
   const scatter = useMemo(() => {
@@ -303,14 +340,12 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
       groups.forEach((group, i) => {
         const s = scatter[i];
-        const faceMat = faceMaterialRefs.current[i];
-        const edgeMat = edgeMaterialRefs.current[i];
+        const mat = materialRefs.current[i];
 
         group.position.set(s.x, s.y, s.z);
         group.rotation.set(s.rotX, s.rotY, s.rotZ);
         group.scale.setScalar(0.55);
-        if (faceMat) faceMat.opacity = 0;
-        if (edgeMat) edgeMat.opacity = 0;
+        if (mat) mat.opacity = 0;
 
         const at = i * 0.085;
         tl.to(group.position, { x: 0, y: 0, z: 0, duration: 2.1 }, at)
@@ -321,37 +356,29 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
             at
           );
 
-        if (faceMat) {
+        if (mat) {
           tl.to(
-            faceMat,
+            mat,
             { opacity: 1, duration: 1.4, ease: "power2.out" },
             at + 0.12
           );
-        }
 
-        /* Entzünden: Der glühende Rand flammt beim Andocken heftig auf */
-        if (edgeMat) {
-          edgeMat.emissiveIntensity = 0.4;
+          /* "Vereisen" beim Andocken: kurzer frostiger Blitz */
+          mat.emissiveIntensity = 0;
           tl.to(
-            edgeMat,
-            { opacity: 1, duration: 1.4, ease: "power2.out" },
-            at + 0.12
-          )
-            .to(
-              edgeMat,
-              { emissiveIntensity: 5.5, duration: 0.25, ease: "power2.in" },
-              at + 1.35
-            )
-            .to(
-              edgeMat,
-              { emissiveIntensity: 2.6, duration: 0.9, ease: "power2.out" },
-              at + 1.6
-            );
+            mat,
+            { emissiveIntensity: 1.6, duration: 0.22, ease: "power2.in" },
+            at + 1.35
+          ).to(
+            mat,
+            { emissiveIntensity: 0.28, duration: 1.0, ease: "power2.out" },
+            at + 1.57
+          );
         }
       });
 
-      /* Flammen wachsen mit dem Einflug mit */
-      tl.to(flameFade.current, { value: 1, duration: 2.6, ease: "power2.inOut" }, 0.5);
+      /* Frost-Nebel zieht mit dem Intro auf */
+      tl.to(mistFade.current, { value: 1, duration: 2.8, ease: "power2.inOut" }, 0.7);
     });
 
     return () => ctx.revert();
@@ -363,7 +390,7 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
     return last.x + last.advance - layout[0].x;
   }, [layout]);
 
-  /* Endlos-Loop: Schweben + Glut-Flackern (läuft für immer weiter) */
+  /* Endlos-Loop: Schweben + eisiges Glitzern (läuft für immer) */
   useFrame((state) => {
     if (!wrapperRef.current) return;
     const t = state.clock.elapsedTime;
@@ -372,17 +399,14 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
     wrapperRef.current.rotation.x = Math.sin(t * 0.4) * 0.015 * amp;
     wrapperRef.current.rotation.y = Math.cos(t * 0.5) * 0.02 * amp;
 
-    /* Permanentes Feuer-Flackern der Glut-Ränder nach dem Intro */
+    /* Sanftes, endloses Eis-Schimmern (viel ruhiger als Feuer-Flackern) */
     if (introDone.current) {
-      edgeMaterialRefs.current.forEach((mat, i) => {
+      materialRefs.current.forEach((mat, i) => {
         if (!mat) return;
-        const s = flickerSeeds[i];
-        const flicker =
-          2.6 +
-          Math.sin(t * s * 2.1 + i * 1.7) * 0.55 +
-          Math.sin(t * s * 5.3 + i * 0.9) * 0.3 +
-          Math.sin(t * s * 11.7 + i * 2.3) * 0.15;
-        mat.emissiveIntensity = Math.max(1.4, flicker);
+        const s = shimmerSeeds[i];
+        mat.emissiveIntensity =
+          0.26 + Math.sin(t * s * 0.8 + i * 1.7) * 0.08 +
+          Math.sin(t * s * 2.3 + i * 0.9) * 0.04;
       });
     }
 
@@ -397,6 +421,9 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
   return (
     <group ref={wrapperRef} position={[0, 0, 0]}>
+      {/* Frost-Dunst hinter dem gesamten Schriftzug */}
+      <FrostMist fadeRef={mistFade} />
+
       {layout.map((letter, i) =>
         letter.char === " " ? null : (
           <group key={i} position={[letter.x + letter.advance / 2, 0, 0]}>
@@ -405,13 +432,6 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
                 groupRefs.current[i] = el;
               }}
             >
-              {/* Flammen hinter dem Buchstaben — endlos brennend */}
-              <LetterFlame
-                width={letter.advance}
-                seed={i * 0.61 + 0.13}
-                fadeRef={flameFade}
-              />
-
               <group
                 position={[-letter.advance / 2, -CAP_HEIGHT / 2, -DEPTH / 2]}
               >
@@ -419,39 +439,31 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
                   font={FONT_URL}
                   size={SIZE}
                   height={DEPTH}
-                  curveSegments={20}
+                  curveSegments={16}
                   bevelEnabled
-                  bevelThickness={0.035}
-                  bevelSize={0.02}
+                  bevelThickness={0.03}
+                  bevelSize={0.018}
                   bevelSegments={5}
                 >
                   {letter.char}
-                  {/* Slot 0 — Vorder-/Rückseite: pechschwarz wie im Original */}
-                  <meshStandardMaterial
-                    attach="material-0"
+                  {/* Glasklares Eis: Transmission + bläulicher Frost */}
+                  <meshPhysicalMaterial
                     ref={(el) => {
-                      faceMaterialRefs.current[i] = el;
+                      materialRefs.current[i] = el;
                     }}
-                    color="#050302"
-                    metalness={0.3}
-                    roughness={0.75}
-                    emissive="#1a0400"
-                    emissiveIntensity={0.5}
-                    transparent
-                    opacity={0}
-                  />
-                  {/* Slot 1 — Kanten & Bevel: glühender Feuer-Outline */}
-                  <meshStandardMaterial
-                    attach="material-1"
-                    ref={(el) => {
-                      edgeMaterialRefs.current[i] = el;
-                    }}
-                    color="#301004"
-                    metalness={0.1}
-                    roughness={0.4}
-                    emissive="#ff7a1a"
+                    color="#cfeaff"
+                    metalness={0.05}
+                    roughness={0.12}
+                    transmission={0.7}
+                    thickness={0.9}
+                    ior={1.31}
+                    clearcoat={1}
+                    clearcoatRoughness={0.25}
+                    attenuationColor="#7ec2ff"
+                    attenuationDistance={1.6}
+                    emissive="#9fd4ff"
                     emissiveIntensity={0}
-                    toneMapped={false}
+                    envMapIntensity={1.4}
                     transparent
                     opacity={0}
                   />
@@ -498,45 +510,52 @@ function CameraRig() {
 
 /* ─────────────────────────────── Beleuchtung ────────────────────────────── */
 
-function FireLighting() {
-  const flickerLight = useRef<THREE.PointLight>(null);
+function WinterLighting() {
+  const shimmerLight = useRef<THREE.PointLight>(null);
 
-  /* Dezentes Feuerlicht flackert endlos — die Flächen bleiben trotzdem
-     pechschwarz (dunkles Albedo), nur die Kanten fangen das Licht */
+  /* Sanft pulsierendes Nordlicht — endlos */
   useFrame((state) => {
-    if (!flickerLight.current) return;
+    if (!shimmerLight.current) return;
     const t = state.clock.elapsedTime;
-    flickerLight.current.intensity =
-      9 + Math.sin(t * 7.3) * 2.2 + Math.sin(t * 13.7) * 1.2 + Math.sin(t * 3.1) * 1.6;
+    shimmerLight.current.intensity =
+      14 + Math.sin(t * 0.9) * 3 + Math.sin(t * 2.3) * 1.5;
   });
 
   return (
     <>
-      {/* Warmes Glut-Licht von unten (wie ein Lavameer) */}
+      {/* Kaltes Mondlicht von oben */}
       <spotLight
-        position={[0, -6, 4]}
-        angle={0.9}
+        position={[4, 9, 6]}
+        angle={0.5}
         penumbra={1}
-        intensity={35}
-        color="#ff3d00"
+        intensity={80}
+        color="#eaf6ff"
       />
-      {/* Flackerndes Feuerlicht vor dem Schriftzug */}
+      {/* Eisblaues Streiflicht von links unten */}
+      <spotLight
+        position={[-7, -4, 5]}
+        angle={0.6}
+        penumbra={1}
+        intensity={40}
+        color="#4da8ff"
+      />
+      {/* Pulsierendes Nordlicht vor der Szene */}
       <pointLight
-        ref={flickerLight}
-        position={[0, 1.5, 3.5]}
-        color="#ff8a3c"
-        distance={20}
-        decay={1.6}
+        ref={shimmerLight}
+        position={[0, 2, 4]}
+        color="#bfe3ff"
+        distance={22}
+        decay={1.8}
       />
-      {/* Dezentes Gegenlicht von oben für Kanten-Definition */}
-      <spotLight
-        position={[5, 8, 6]}
-        angle={0.45}
-        penumbra={1}
-        intensity={12}
-        color="#ffd9a0"
+      {/* Zartes violettes Gegenlicht (Aurora-Feeling) */}
+      <pointLight
+        position={[6, -2, -3]}
+        intensity={8}
+        color="#b8a8ff"
+        distance={18}
+        decay={1.8}
       />
-      <ambientLight intensity={0.03} color="#ff6a00" />
+      <ambientLight intensity={0.12} color="#a8cfff" />
     </>
   );
 }
@@ -550,30 +569,30 @@ export default function Hero3D({
 }) {
   return (
     <div className="absolute inset-0 h-full w-full">
-      {/* ── Höllen-Hintergrund: glimmende Glut-Nebel hinter dem Canvas ── */}
+      {/* ── Winter-Hintergrund: eisige Nebel hinter dem Canvas ── */}
       <div aria-hidden className="absolute inset-0 overflow-hidden bg-black">
         <div
           className="aurora-blob"
           style={{
             width: "60vw",
             height: "45vw",
-            left: "20%",
-            bottom: "-25%",
+            left: "15%",
+            top: "-20%",
             background:
-              "radial-gradient(circle, rgba(255,60,0,0.20), transparent 65%)",
-            animation: "aurora-a 24s ease-in-out infinite",
+              "radial-gradient(circle, rgba(70,150,255,0.15), transparent 65%)",
+            animation: "aurora-a 26s ease-in-out infinite",
           }}
         />
         <div
           className="aurora-blob"
           style={{
-            width: "48vw",
-            height: "48vw",
-            right: "-5%",
-            bottom: "-20%",
+            width: "50vw",
+            height: "50vw",
+            right: "-8%",
+            bottom: "-18%",
             background:
-              "radial-gradient(circle, rgba(255,120,20,0.13), transparent 65%)",
-            animation: "aurora-b 30s ease-in-out infinite",
+              "radial-gradient(circle, rgba(120,200,255,0.10), transparent 65%)",
+            animation: "aurora-b 32s ease-in-out infinite",
           }}
         />
         <div
@@ -581,11 +600,11 @@ export default function Hero3D({
           style={{
             width: "42vw",
             height: "42vw",
-            left: "-8%",
-            top: "55%",
+            left: "-10%",
+            bottom: "10%",
             background:
-              "radial-gradient(circle, rgba(180,20,0,0.16), transparent 60%)",
-            animation: "aurora-c 20s ease-in-out infinite",
+              "radial-gradient(circle, rgba(150,130,255,0.10), transparent 60%)",
+            animation: "aurora-c 22s ease-in-out infinite",
           }}
         />
         {/* Feines Grain gegen Banding */}
@@ -603,31 +622,34 @@ export default function Hero3D({
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         dpr={[1, 2]}
       >
-        <fog attach="fog" args={["#050100", 12, 42]} />
+        <fog attach="fog" args={["#010208", 12, 42]} />
 
         <CameraRig />
-        <FireLighting />
+        <WinterLighting />
         <FlyingLetters onIntroComplete={onIntroComplete} />
         <WarpStreaks />
 
-        {/* Aufsteigende Glut-Funken — endlos */}
+        {/* Kristall-Schneeflocken — endloses Herabrieseln */}
+        <CrystalSnow />
+
+        {/* Funkelnder Schneestaub in zwei Ebenen */}
         <Sparkles
-          count={140}
-          size={2.2}
-          speed={0.6}
-          opacity={0.5}
-          scale={[22, 10, 14]}
-          position={[0, -1, -4]}
-          color="#ff9a3c"
+          count={120}
+          size={1.8}
+          speed={0.18}
+          opacity={0.4}
+          scale={[24, 12, 16]}
+          position={[0, 0, -5]}
+          color="#cfe9ff"
         />
         <Sparkles
-          count={60}
-          size={4}
-          speed={0.9}
-          opacity={0.35}
-          scale={[16, 8, 10]}
-          position={[0, -2, -2]}
-          color="#ffcf7a"
+          count={50}
+          size={3.2}
+          speed={0.28}
+          opacity={0.3}
+          scale={[16, 9, 8]}
+          position={[0, 0, -1]}
+          color="#ffffff"
         />
       </Canvas>
 
@@ -637,7 +659,7 @@ export default function Hero3D({
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 80% 65% at 50% 50%, transparent 55%, rgba(0,0,0,0.6) 100%)",
+            "radial-gradient(ellipse 80% 65% at 50% 50%, transparent 55%, rgba(0,0,10,0.6) 100%)",
         }}
       />
     </div>
