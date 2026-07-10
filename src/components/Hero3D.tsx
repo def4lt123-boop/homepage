@@ -1,41 +1,34 @@
 "use client";
 
 /**
- * Hero3D
- * ──────
- * Immersive 3D-Startanimation:
- * Die Buchstaben von "Flo's Websites" fliegen einzeln aus der Tiefe
- * des Raums (Z/Y) ein und formen — mit GSAP-Stagger — den Schriftzug.
+ * Hero3D — Diablo Edition
+ * ───────────────────────
+ * Die Buchstaben von "Flo's Websites" fliegen einzeln aus der Tiefe ein
+ * (GSAP-Stagger) und brennen danach ENDLOS:
  *
- * - Text3D (@react-three/drei) mit lokal gehostetem Inter SemiBold
- *   (echtes Inter, konvertiert zu typeface.json → Apple-cleaner Look)
- * - MeshPhysicalMaterial: Glas-/Titan-Finish (Clearcoat, niedrige
- *   Roughness, mittlere Metalness, leichte Transparenz)
- * - Prozedurale Studio-Beleuchtung via Environment + Lightformer
- *   (keine externen Assets → funktioniert offline & auf Vercel)
- * - Dezente Kamera-Dolly-Fahrt + Maus-Parallax für Tiefe
+ * - Text3D mit Diablo-Font (Exocet-Stil, lokal als typeface.json)
+ * - Verkohltes Material: fast schwarz, mit orange glühendem Emissive
+ *   und permanentem Glut-Flackern (kein Ende)
+ * - Prozeduraler Feuer-Shader (FBM-Noise) als Flammen-Plane pro
+ *   Buchstabe — additiv geblendet, loopt unendlich
+ * - Aufsteigende Glut-Funken (Sparkles), warme Feuer-Beleuchtung
+ * - Warp-Streaks & Hintergrund in Feuertönen
  */
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import {
-  Text3D,
-  Environment,
-  Lightformer,
-  Sparkles,
-  useFont,
-} from "@react-three/drei";
+import { Text3D, Sparkles, useFont } from "@react-three/drei";
 import gsap from "gsap";
 
 /* ────────────────────────────── Konfiguration ───────────────────────────── */
 
-const FONT_URL = "/fonts/Inter_SemiBold.typeface.json";
+const FONT_URL = "/fonts/Diablo.typeface.json";
 const TEXT = "Flo's Websites";
-const SIZE = 1; // Grundgröße der Glyphen
-const DEPTH = 0.22; // Extrusionstiefe
-const LETTER_SPACING = 0.06;
-const CAP_HEIGHT = 0.72; // optische Höhe der Versalien (für vertikale Zentrierung)
+const SIZE = 1;
+const DEPTH = 0.22;
+const LETTER_SPACING = 0.08;
+const CAP_HEIGHT = 0.72;
 
 useFont.preload(FONT_URL);
 
@@ -46,12 +39,125 @@ function seededRandom(seed: number) {
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
+/* ─────────────────────────── Feuer-Shader (FBM) ─────────────────────────── */
+
+const fireVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const fireFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uFade;
+  uniform float uSeed;
+  varying vec2 vUv;
+
+  /* Hash & Value-Noise */
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453123);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+      v += a * noise(p);
+      p = p * 2.02 + vec2(13.7, 7.3);
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    vec2 uv = vUv;
+
+    /* Flammen steigen auf: Noise scrollt endlos nach unten (Modulo-frei,
+       fbm ist unbegrenzt fortsetzbar → nahtloser Endlos-Loop) */
+    float t = uTime * 1.1;
+    vec2 q = vec2(uv.x * 3.0, uv.y * 2.2 - t);
+    float n = fbm(q + fbm(q * 1.6 - t * 0.35) * 0.9);
+
+    /* Grundform: unten dicht, nach oben ausgefranst */
+    float base = 1.0 - uv.y;
+    float flame = n * (0.45 + base * 1.15);
+
+    /* Seitliches Auslaufen */
+    float sideFade = smoothstep(0.0, 0.22, uv.x) * smoothstep(1.0, 0.78, uv.x);
+    float bottomFade = smoothstep(0.0, 0.06, uv.y);
+    float intensity = smoothstep(0.42, 1.0, flame) * sideFade * bottomFade;
+
+    /* Feuer-Farbrampe: tiefrot → orange → gelb → weißglühend */
+    vec3 col = vec3(0.0);
+    col = mix(col, vec3(0.55, 0.06, 0.0), smoothstep(0.0, 0.25, intensity));
+    col = mix(col, vec3(1.0, 0.35, 0.02), smoothstep(0.2, 0.55, intensity));
+    col = mix(col, vec3(1.0, 0.75, 0.15), smoothstep(0.5, 0.8, intensity));
+    col = mix(col, vec3(1.0, 0.98, 0.75), smoothstep(0.8, 1.0, intensity));
+
+    float alpha = intensity * uFade;
+    if (alpha < 0.01) discard;
+    gl_FragColor = vec4(col * alpha * 1.6, alpha);
+  }
+`;
+
+/** Flammen-Plane für einen Buchstaben — loopt für immer */
+function LetterFlame({
+  width,
+  seed,
+  fadeRef,
+}: {
+  width: number;
+  seed: number;
+  fadeRef: React.RefObject<{ value: number }>;
+}) {
+  const matRef = useRef<THREE.ShaderMaterial>(null);
+
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: seed * 10.0 },
+      uFade: { value: 0 },
+      uSeed: { value: seed * 37.7 },
+    }),
+    [seed]
+  );
+
+  useFrame((_, delta) => {
+    if (!matRef.current) return;
+    /* Endlos: Zeit läuft immer weiter, kein Reset, kein Ende */
+    matRef.current.uniforms.uTime.value += delta;
+    matRef.current.uniforms.uFade.value = fadeRef.current?.value ?? 0;
+  });
+
+  const W = Math.max(width * 2.1, 1.2);
+  const H = 2.4;
+
+  return (
+    <mesh position={[0, H / 2 - CAP_HEIGHT * 0.55, -DEPTH * 0.7]}>
+      <planeGeometry args={[W, H]} />
+      <shaderMaterial
+        ref={matRef}
+        vertexShader={fireVertexShader}
+        fragmentShader={fireFragmentShader}
+        uniforms={uniforms}
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
 /* ────────────────────────────── Warp-Streaks ────────────────────────────── */
-/**
- * Feine Lichtstreifen, die während des Intros aus der Tiefe an der Kamera
- * vorbeiziehen — verstärkt das Gefühl, dass die Buchstaben aus dem Raum
- * "heranfliegen". Blendet nach dem Intro sanft aus und deaktiviert sich.
- */
+/** Glühende Funken-Streifen, die während des Intros vorbeiziehen */
 function WarpStreaks() {
   const COUNT = 64;
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -65,7 +171,7 @@ function WarpStreaks() {
     return Array.from({ length: COUNT }, () => ({
       x: (rand() - 0.5) * 30,
       y: (rand() - 0.5) * 16,
-      z: -90 + rand() * 90, // Startverteilung in der Tiefe
+      z: -90 + rand() * 90,
       speed: 30 + rand() * 34,
       len: 2 + rand() * 5,
       thick: 0.008 + rand() * 0.02,
@@ -80,19 +186,17 @@ function WarpStreaks() {
     if (startTime.current === null) startTime.current = state.clock.elapsedTime;
     const t = state.clock.elapsedTime - startTime.current;
 
-    /* Sanft ein- (0–0.6s) und wieder ausblenden (ab 2.8s, weg bei 4.2s) */
     const fadeIn = THREE.MathUtils.clamp(t / 0.6, 0, 1);
     const fadeOut = THREE.MathUtils.clamp(1 - (t - 2.8) / 1.4, 0, 1);
     mat.opacity = 0.55 * fadeIn * fadeOut;
 
     if (fadeOut <= 0) {
       mesh.visible = false;
-      done.current = true; // Intro vorbei → keine weitere Arbeit pro Frame
+      done.current = true;
       return;
     }
 
     seeds.forEach((s, i) => {
-      /* Streifen fliegen auf die Kamera zu, loopen zurück in die Tiefe */
       const z = ((s.z + s.speed * t + 100) % 112) - 100;
       dummy.position.set(s.x, s.y, z);
       dummy.scale.set(s.thick, s.thick, s.len);
@@ -103,11 +207,15 @@ function WarpStreaks() {
   });
 
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, COUNT]} frustumCulled={false}>
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, COUNT]}
+      frustumCulled={false}
+    >
       <boxGeometry args={[1, 1, 1]} />
       <meshBasicMaterial
         ref={matRef}
-        color="#9bb8ff"
+        color="#ff7a2a"
         transparent
         opacity={0}
         depthWrite={false}
@@ -121,16 +229,13 @@ function WarpStreaks() {
 
 type LetterLayout = {
   char: string;
-  /** Linke Kante des Glyphs (zentriertes Gesamtlayout) */
   x: number;
-  /** Advance-Breite des Glyphs */
   advance: number;
 };
 
 function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
   const font = useFont(FONT_URL);
 
-  /* Layout: Glyph-Advances aus dem Font lesen → exakt zentrierter Schriftzug */
   const layout = useMemo<LetterLayout[]>(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = font.data as any;
@@ -150,11 +255,17 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
   }, [font]);
 
   const groupRefs = useRef<(THREE.Group | null)[]>([]);
-  const materialRefs = useRef<(THREE.MeshPhysicalMaterial | null)[]>([]);
+  const materialRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  /** Gemeinsamer Fade-Wert für alle Flammen (folgt dem Buchstaben-Fade) */
+  const flameFade = useRef({ value: 0 });
   const wrapperRef = useRef<THREE.Group>(null);
   const introDone = useRef(false);
+  /** Flacker-Seeds pro Buchstabe */
+  const flickerSeeds = useMemo(() => {
+    const rand = seededRandom(777);
+    return layout.map(() => 2 + rand() * 4);
+  }, [layout]);
 
-  /* Streupositionen: aus der Tiefe (−Z) und oben/unten (±Y) */
   const scatter = useMemo(() => {
     const rand = seededRandom(1337);
     return layout.map((_, i) => {
@@ -162,7 +273,7 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
       return {
         x: (rand() - 0.5) * 14,
         y: side * (2.5 + rand() * 5),
-        z: -(18 + rand() * 26), // tief im Bildschirm
+        z: -(18 + rand() * 26),
         rotX: (rand() - 0.5) * Math.PI * 1.6,
         rotY: (rand() - 0.5) * Math.PI * 1.8,
         rotZ: (rand() - 0.5) * Math.PI * 0.9,
@@ -175,7 +286,7 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
     const groups = groupRefs.current.filter(Boolean) as THREE.Group[];
     const materials = materialRefs.current.filter(
       Boolean
-    ) as THREE.MeshPhysicalMaterial[];
+    ) as THREE.MeshStandardMaterial[];
     if (groups.length === 0) return;
 
     const ctx = gsap.context(() => {
@@ -190,13 +301,12 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
       groups.forEach((group, i) => {
         const s = scatter[i];
-        // Startzustand
         group.position.set(s.x, s.y, s.z);
         group.rotation.set(s.rotX, s.rotY, s.rotZ);
         group.scale.setScalar(0.55);
         if (materials[i]) materials[i].opacity = 0;
 
-        const at = i * 0.085; // Stagger
+        const at = i * 0.085;
         tl.to(group.position, { x: 0, y: 0, z: 0, duration: 2.1 }, at)
           .to(group.rotation, { x: 0, y: 0, z: 0, duration: 2.3 }, at)
           .to(
@@ -206,48 +316,39 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
           )
           .to(
             materials[i],
-            { opacity: 0.96, duration: 1.4, ease: "power2.out" },
+            { opacity: 1, duration: 1.4, ease: "power2.out" },
             at + 0.12
           );
 
-        /* Landing-Flash: kurzes Aufglimmen, wenn der Buchstabe andockt */
+        /* Entzünden: heftiges Aufglühen beim Andocken */
         if (materials[i]) {
-          materials[i].emissive = new THREE.Color("#8fb8ff");
           materials[i].emissiveIntensity = 0;
           tl.to(
             materials[i],
-            {
-              emissiveIntensity: 0.85,
-              duration: 0.22,
-              ease: "power2.in",
-            },
+            { emissiveIntensity: 2.2, duration: 0.25, ease: "power2.in" },
             at + 1.35
           ).to(
             materials[i],
-            {
-              emissiveIntensity: 0,
-              duration: 0.9,
-              ease: "power2.out",
-            },
-            at + 1.57
+            { emissiveIntensity: 0.9, duration: 0.9, ease: "power2.out" },
+            at + 1.6
           );
         }
       });
+
+      /* Flammen wachsen mit dem Einflug mit */
+      tl.to(flameFade.current, { value: 1, duration: 2.6, ease: "power2.inOut" }, 0.5);
     });
 
     return () => ctx.revert();
   }, [scatter, onIntroComplete]);
 
-  /* Gesamtbreite des Schriftzugs (für responsives Skalieren) */
   const totalWidth = useMemo(() => {
     if (layout.length === 0) return 1;
     const last = layout[layout.length - 1];
     return last.x + last.advance - layout[0].x;
   }, [layout]);
 
-  /* Nach dem Intro: organisches, kaum wahrnehmbares Schweben
-     + responsive Skalierung, damit der Schriftzug auf Mobile nie
-     abgeschnitten wird (bezogen auf die finale Kameradistanz) */
+  /* Endlos-Loop: Schweben + Glut-Flackern (läuft für immer weiter) */
   useFrame((state) => {
     if (!wrapperRef.current) return;
     const t = state.clock.elapsedTime;
@@ -256,8 +357,22 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
     wrapperRef.current.rotation.x = Math.sin(t * 0.4) * 0.015 * amp;
     wrapperRef.current.rotation.y = Math.cos(t * 0.5) * 0.02 * amp;
 
+    /* Permanentes Feuer-Flackern der Glut-Ränder nach dem Intro */
+    if (introDone.current) {
+      materialRefs.current.forEach((mat, i) => {
+        if (!mat) return;
+        const s = flickerSeeds[i];
+        const flicker =
+          0.9 +
+          Math.sin(t * s * 2.1 + i * 1.7) * 0.18 +
+          Math.sin(t * s * 5.3 + i * 0.9) * 0.1 +
+          Math.sin(t * s * 11.7 + i * 2.3) * 0.05;
+        mat.emissiveIntensity = Math.max(0.45, flicker);
+      });
+    }
+
     const cam = state.camera as THREE.PerspectiveCamera;
-    const dist = 8.5; // finale Kameradistanz (CameraRig)
+    const dist = 8.5;
     const visibleH = 2 * dist * Math.tan((cam.fov * Math.PI) / 360);
     const visibleW = visibleH * cam.aspect;
     const target = Math.min(1, (visibleW * 0.88) / totalWidth);
@@ -270,13 +385,18 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
       {layout.map((letter, i) =>
         letter.char === " " ? null : (
           <group key={i} position={[letter.x + letter.advance / 2, 0, 0]}>
-            {/* Äußere Gruppe = Animationsziel, innere Gruppe zentriert den
-                Glyph, damit die Einflug-Rotation um seine Mitte erfolgt */}
             <group
               ref={(el) => {
                 groupRefs.current[i] = el;
               }}
             >
+              {/* Flammen hinter dem Buchstaben — endlos brennend */}
+              <LetterFlame
+                width={letter.advance}
+                seed={i * 0.61 + 0.13}
+                fadeRef={flameFade}
+              />
+
               <group
                 position={[-letter.advance / 2, -CAP_HEIGHT / 2, -DEPTH / 2]}
               >
@@ -284,27 +404,23 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
                   font={FONT_URL}
                   size={SIZE}
                   height={DEPTH}
-                  curveSegments={24}
+                  curveSegments={20}
                   bevelEnabled
-                  bevelThickness={0.025}
-                  bevelSize={0.014}
-                  bevelSegments={8}
+                  bevelThickness={0.03}
+                  bevelSize={0.016}
+                  bevelSegments={6}
                 >
                   {letter.char}
-                  {/* Edles Glas-/Titan-Finish (iPhone-Look) */}
-                  <meshPhysicalMaterial
+                  {/* Verkohlt-glühendes Material (Diablo-Look) */}
+                  <meshStandardMaterial
                     ref={(el) => {
                       materialRefs.current[i] = el;
                     }}
-                    color="#e8e8ed"
-                    metalness={0.65}
-                    roughness={0.16}
-                    clearcoat={1}
-                    clearcoatRoughness={0.12}
-                    reflectivity={0.9}
-                    iridescence={0.18}
-                    iridescenceIOR={1.4}
-                    envMapIntensity={1.5}
+                    color="#160a05"
+                    metalness={0.25}
+                    roughness={0.55}
+                    emissive="#ff5a00"
+                    emissiveIntensity={0}
                     transparent
                     opacity={0}
                   />
@@ -324,7 +440,6 @@ function CameraRig() {
   const { camera } = useThree();
   const parallax = useRef({ x: 0, y: 0 });
 
-  /* Cineastische Dolly-Fahrt beim Laden */
   useEffect(() => {
     camera.position.set(0, 2.2, 17);
     const tween = gsap.to(camera.position, {
@@ -338,11 +453,6 @@ function CameraRig() {
     };
   }, [camera]);
 
-  /* Dezente Maus-Parallaxe + permanenter LookAt für Tiefe.
-     Hinweis: Imperative Mutation im useFrame-Loop ist das offizielle
-     R3F-Pattern (läuft außerhalb des React-Renderings) — die
-     React-Compiler-Regel meldet hier einen False-Positive. */
-   
   useFrame((state) => {
     const p = parallax.current;
     p.x += (state.pointer.x * 0.5 - p.x) * 0.035;
@@ -357,61 +467,44 @@ function CameraRig() {
 
 /* ─────────────────────────────── Beleuchtung ────────────────────────────── */
 
-function StudioLighting() {
+function FireLighting() {
+  const flickerLight = useRef<THREE.PointLight>(null);
+
+  /* Zentrales Feuerlicht flackert endlos — beleuchtet die Buchstaben von vorn */
+  useFrame((state) => {
+    if (!flickerLight.current) return;
+    const t = state.clock.elapsedTime;
+    flickerLight.current.intensity =
+      26 + Math.sin(t * 7.3) * 5 + Math.sin(t * 13.7) * 3 + Math.sin(t * 3.1) * 4;
+  });
+
   return (
     <>
-      {/* Prozedurale Environment-Map: Studio-Softboxen, keine externen Assets */}
-      <Environment resolution={256} frames={1}>
-        {/* Key-Softbox oben */}
-        <Lightformer
-          intensity={4}
-          position={[0, 5, -9]}
-          rotation-x={Math.PI / 2}
-          scale={[12, 12, 1]}
-          color="#ffffff"
-        />
-        {/* Kühle Kante links (Titan-Schimmer) */}
-        <Lightformer
-          intensity={1.6}
-          position={[-6, 1, 2]}
-          rotation-y={Math.PI / 2}
-          scale={[10, 3, 1]}
-          color="#8fb8ff"
-        />
-        {/* Warme Kante rechts */}
-        <Lightformer
-          intensity={1.2}
-          position={[6, -1, 2]}
-          rotation-y={-Math.PI / 2}
-          scale={[10, 3, 1]}
-          color="#ffd9c2"
-        />
-        {/* Frontaler Glanzstreifen */}
-        <Lightformer
-          intensity={0.8}
-          position={[0, 0, 10]}
-          scale={[14, 1.2, 1]}
-          color="#ffffff"
-        />
-      </Environment>
-
-      {/* Akzent-Spots für definierte Highlights auf den Kanten */}
+      {/* Warmes Glut-Licht von unten (wie ein Lavameer) */}
       <spotLight
-        position={[6, 7, 6]}
-        angle={0.4}
+        position={[0, -6, 4]}
+        angle={0.9}
         penumbra={1}
-        intensity={110}
-        color="#ffffff"
-        castShadow={false}
+        intensity={90}
+        color="#ff3d00"
       />
+      {/* Flackerndes Feuerlicht vor dem Schriftzug */}
+      <pointLight
+        ref={flickerLight}
+        position={[0, 1.5, 3.5]}
+        color="#ff8a3c"
+        distance={20}
+        decay={1.6}
+      />
+      {/* Kühles Gegenlicht von oben für Kanten-Definition */}
       <spotLight
-        position={[-7, -4, 5]}
-        angle={0.5}
+        position={[5, 8, 6]}
+        angle={0.45}
         penumbra={1}
-        intensity={45}
-        color="#2997ff"
+        intensity={30}
+        color="#ffd9a0"
       />
-      <ambientLight intensity={0.12} />
+      <ambientLight intensity={0.06} color="#ff6a00" />
     </>
   );
 }
@@ -425,18 +518,18 @@ export default function Hero3D({
 }) {
   return (
     <div className="absolute inset-0 h-full w-full">
-      {/* ── Aurora-Hintergrund: langsam driftende Farbnebel hinter dem Canvas ── */}
+      {/* ── Höllen-Hintergrund: glimmende Glut-Nebel hinter dem Canvas ── */}
       <div aria-hidden className="absolute inset-0 overflow-hidden bg-black">
         <div
           className="aurora-blob"
           style={{
-            width: "55vw",
-            height: "55vw",
-            left: "8%",
-            top: "-18%",
+            width: "60vw",
+            height: "45vw",
+            left: "20%",
+            bottom: "-25%",
             background:
-              "radial-gradient(circle, rgba(41,151,255,0.16), transparent 65%)",
-            animation: "aurora-a 26s ease-in-out infinite",
+              "radial-gradient(circle, rgba(255,60,0,0.20), transparent 65%)",
+            animation: "aurora-a 24s ease-in-out infinite",
           }}
         />
         <div
@@ -444,26 +537,26 @@ export default function Hero3D({
           style={{
             width: "48vw",
             height: "48vw",
-            right: "2%",
-            bottom: "-22%",
+            right: "-5%",
+            bottom: "-20%",
             background:
-              "radial-gradient(circle, rgba(120,80,255,0.13), transparent 65%)",
-            animation: "aurora-b 32s ease-in-out infinite",
+              "radial-gradient(circle, rgba(255,120,20,0.13), transparent 65%)",
+            animation: "aurora-b 30s ease-in-out infinite",
           }}
         />
         <div
           className="aurora-blob"
           style={{
-            width: "40vw",
-            height: "40vw",
-            left: "35%",
-            top: "30%",
+            width: "42vw",
+            height: "42vw",
+            left: "-8%",
+            top: "55%",
             background:
-              "radial-gradient(circle, rgba(255,255,255,0.05), transparent 60%)",
-            animation: "aurora-c 22s ease-in-out infinite",
+              "radial-gradient(circle, rgba(180,20,0,0.16), transparent 60%)",
+            animation: "aurora-c 20s ease-in-out infinite",
           }}
         />
-        {/* Feines Grain gegen Banding in den Verläufen */}
+        {/* Feines Grain gegen Banding */}
         <div
           className="absolute inset-0 opacity-[0.05] mix-blend-overlay"
           style={{
@@ -478,36 +571,41 @@ export default function Hero3D({
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         dpr={[1, 2]}
       >
-        {/* Tiefenstaffelung: Buchstaben tauchen aus dem Dunkel auf
-            (Canvas bleibt transparent → Aurora scheint durch) */}
-        <fog attach="fog" args={["#000000", 12, 42]} />
+        <fog attach="fog" args={["#050100", 12, 42]} />
 
         <CameraRig />
-        <StudioLighting />
+        <FireLighting />
         <FlyingLetters onIntroComplete={onIntroComplete} />
-
-        {/* Warp-Streaks: Lichtstreifen ziehen während des Intros vorbei */}
         <WarpStreaks />
 
-        {/* Dezenter Sternenstaub für räumliche Tiefe */}
+        {/* Aufsteigende Glut-Funken — endlos */}
         <Sparkles
-          count={90}
-          size={1.6}
-          speed={0.25}
+          count={140}
+          size={2.2}
+          speed={0.6}
+          opacity={0.5}
+          scale={[22, 10, 14]}
+          position={[0, -1, -4]}
+          color="#ff9a3c"
+        />
+        <Sparkles
+          count={60}
+          size={4}
+          speed={0.9}
           opacity={0.35}
-          scale={[24, 12, 18]}
-          position={[0, 0, -6]}
-          color="#9bb8ff"
+          scale={[16, 8, 10]}
+          position={[0, -2, -2]}
+          color="#ffcf7a"
         />
       </Canvas>
 
-      {/* Vignette über dem Canvas — cineastischer Fokus zur Mitte */}
+      {/* Vignette — cineastischer Fokus zur Mitte */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 80% 65% at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%)",
+            "radial-gradient(ellipse 80% 65% at 50% 50%, transparent 55%, rgba(0,0,0,0.6) 100%)",
         }}
       />
     </div>
