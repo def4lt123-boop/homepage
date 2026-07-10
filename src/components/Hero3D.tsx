@@ -46,6 +46,77 @@ function seededRandom(seed: number) {
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
+/* ────────────────────────────── Warp-Streaks ────────────────────────────── */
+/**
+ * Feine Lichtstreifen, die während des Intros aus der Tiefe an der Kamera
+ * vorbeiziehen — verstärkt das Gefühl, dass die Buchstaben aus dem Raum
+ * "heranfliegen". Blendet nach dem Intro sanft aus und deaktiviert sich.
+ */
+function WarpStreaks() {
+  const COUNT = 64;
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const startTime = useRef<number | null>(null);
+  const done = useRef(false);
+
+  const seeds = useMemo(() => {
+    const rand = seededRandom(4242);
+    return Array.from({ length: COUNT }, () => ({
+      x: (rand() - 0.5) * 30,
+      y: (rand() - 0.5) * 16,
+      z: -90 + rand() * 90, // Startverteilung in der Tiefe
+      speed: 30 + rand() * 34,
+      len: 2 + rand() * 5,
+      thick: 0.008 + rand() * 0.02,
+    }));
+  }, []);
+
+  useFrame((state) => {
+    const mesh = meshRef.current;
+    const mat = matRef.current;
+    if (!mesh || !mat || done.current) return;
+
+    if (startTime.current === null) startTime.current = state.clock.elapsedTime;
+    const t = state.clock.elapsedTime - startTime.current;
+
+    /* Sanft ein- (0–0.6s) und wieder ausblenden (ab 2.8s, weg bei 4.2s) */
+    const fadeIn = THREE.MathUtils.clamp(t / 0.6, 0, 1);
+    const fadeOut = THREE.MathUtils.clamp(1 - (t - 2.8) / 1.4, 0, 1);
+    mat.opacity = 0.55 * fadeIn * fadeOut;
+
+    if (fadeOut <= 0) {
+      mesh.visible = false;
+      done.current = true; // Intro vorbei → keine weitere Arbeit pro Frame
+      return;
+    }
+
+    seeds.forEach((s, i) => {
+      /* Streifen fliegen auf die Kamera zu, loopen zurück in die Tiefe */
+      const z = ((s.z + s.speed * t + 100) % 112) - 100;
+      dummy.position.set(s.x, s.y, z);
+      dummy.scale.set(s.thick, s.thick, s.len);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, COUNT]} frustumCulled={false}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshBasicMaterial
+        ref={matRef}
+        color="#9bb8ff"
+        transparent
+        opacity={0}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </instancedMesh>
+  );
+}
+
 /* ─────────────────────────────── Buchstaben ─────────────────────────────── */
 
 type LetterLayout = {
@@ -138,6 +209,29 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
             { opacity: 0.96, duration: 1.4, ease: "power2.out" },
             at + 0.12
           );
+
+        /* Landing-Flash: kurzes Aufglimmen, wenn der Buchstabe andockt */
+        if (materials[i]) {
+          materials[i].emissive = new THREE.Color("#8fb8ff");
+          materials[i].emissiveIntensity = 0;
+          tl.to(
+            materials[i],
+            {
+              emissiveIntensity: 0.85,
+              duration: 0.22,
+              ease: "power2.in",
+            },
+            at + 1.35
+          ).to(
+            materials[i],
+            {
+              emissiveIntensity: 0,
+              duration: 0.9,
+              ease: "power2.out",
+            },
+            at + 1.57
+          );
+        }
       });
     });
 
@@ -331,18 +425,69 @@ export default function Hero3D({
 }) {
   return (
     <div className="absolute inset-0 h-full w-full">
+      {/* ── Aurora-Hintergrund: langsam driftende Farbnebel hinter dem Canvas ── */}
+      <div aria-hidden className="absolute inset-0 overflow-hidden bg-black">
+        <div
+          className="aurora-blob"
+          style={{
+            width: "55vw",
+            height: "55vw",
+            left: "8%",
+            top: "-18%",
+            background:
+              "radial-gradient(circle, rgba(41,151,255,0.16), transparent 65%)",
+            animation: "aurora-a 26s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="aurora-blob"
+          style={{
+            width: "48vw",
+            height: "48vw",
+            right: "2%",
+            bottom: "-22%",
+            background:
+              "radial-gradient(circle, rgba(120,80,255,0.13), transparent 65%)",
+            animation: "aurora-b 32s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="aurora-blob"
+          style={{
+            width: "40vw",
+            height: "40vw",
+            left: "35%",
+            top: "30%",
+            background:
+              "radial-gradient(circle, rgba(255,255,255,0.05), transparent 60%)",
+            animation: "aurora-c 22s ease-in-out infinite",
+          }}
+        />
+        {/* Feines Grain gegen Banding in den Verläufen */}
+        <div
+          className="absolute inset-0 opacity-[0.05] mix-blend-overlay"
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")",
+          }}
+        />
+      </div>
+
       <Canvas
         camera={{ position: [0, 2.2, 17], fov: 40, near: 0.1, far: 100 }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         dpr={[1, 2]}
       >
-        {/* Tiefenstaffelung: Buchstaben tauchen aus dem Dunkel auf */}
+        {/* Tiefenstaffelung: Buchstaben tauchen aus dem Dunkel auf
+            (Canvas bleibt transparent → Aurora scheint durch) */}
         <fog attach="fog" args={["#000000", 12, 42]} />
-        <color attach="background" args={["#000000"]} />
 
         <CameraRig />
         <StudioLighting />
         <FlyingLetters onIntroComplete={onIntroComplete} />
+
+        {/* Warp-Streaks: Lichtstreifen ziehen während des Intros vorbei */}
+        <WarpStreaks />
 
         {/* Dezenter Sternenstaub für räumliche Tiefe */}
         <Sparkles
