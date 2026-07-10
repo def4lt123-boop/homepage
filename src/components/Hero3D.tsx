@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Text3D, Sparkles, useFont } from "@react-three/drei";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import gsap from "gsap";
 
 /* ────────────────────────────── Konfiguration ───────────────────────────── */
@@ -38,6 +39,122 @@ function seededRandom(seed: number) {
   let s = seed % 2147483647;
   if (s <= 0) s += 2147483646;
   return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
+}
+
+/* ─────────────────── Komplexes Eis-Material (Shader-Patch) ──────────────── */
+/**
+ * MeshPhysicalMaterial + injiziertes 3D-Frost-Noise (onBeforeCompile):
+ * - Farbverlauf im Eis: tiefblaue dichte Zonen → türkis → frostweiße Flecken
+ * - Feine Kristalladern (dunkle Linien wie Risse im Eis)
+ * - Wanderndes Mikro-Glitzern (winzige aufblitzende Kristallfacetten)
+ * - Variierende Rauheit: spiegelglatte und mattgefrorene Bereiche
+ * - Dazu Iridescence + Sheen für den perlmuttartigen Eis-Schimmer
+ */
+function createIceMaterial(): THREE.MeshPhysicalMaterial {
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color("#e8f5ff"),
+    metalness: 0.02,
+    roughness: 0.14,
+    transmission: 0.55,
+    thickness: 1.1,
+    ior: 1.31,
+    clearcoat: 1,
+    clearcoatRoughness: 0.2,
+    attenuationColor: new THREE.Color("#4da3ff"),
+    attenuationDistance: 1.2,
+    iridescence: 0.4,
+    iridescenceIOR: 1.31,
+    sheen: 0.5,
+    sheenColor: new THREE.Color("#bfe9ff"),
+    sheenRoughness: 0.5,
+    emissive: new THREE.Color("#9fd4ff"),
+    emissiveIntensity: 0,
+    envMapIntensity: 1.6,
+    transparent: true,
+    opacity: 0,
+  });
+
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    mat.userData.uTime = shader.uniforms.uTime;
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying vec3 vIcePos;"
+      )
+      .replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvIcePos = position;"
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        /* glsl */ `#include <common>
+        varying vec3 vIcePos;
+        uniform float uTime;
+        float iceHash(vec3 p) {
+          return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
+        }
+        float iceNoise(vec3 p) {
+          vec3 i = floor(p); vec3 f = fract(p);
+          vec3 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(iceHash(i), iceHash(i + vec3(1,0,0)), u.x),
+                mix(iceHash(i + vec3(0,1,0)), iceHash(i + vec3(1,1,0)), u.x), u.y),
+            mix(mix(iceHash(i + vec3(0,0,1)), iceHash(i + vec3(1,0,1)), u.x),
+                mix(iceHash(i + vec3(0,1,1)), iceHash(i + vec3(1,1,1)), u.x), u.y),
+            u.z);
+        }
+        float iceFbm(vec3 p) {
+          float v = 0.0; float a = 0.5;
+          for (int k = 0; k < 4; k++) {
+            v += a * iceNoise(p);
+            p = p * 2.1 + vec3(7.3, 3.1, 11.7);
+            a *= 0.5;
+          }
+          return v;
+        }`
+      )
+      .replace(
+        "#include <color_fragment>",
+        /* glsl */ `#include <color_fragment>
+        {
+          float nBig  = iceFbm(vIcePos * 2.2);
+          float nMid  = iceFbm(vIcePos * 6.5 + 13.0);
+          float nFine = iceNoise(vIcePos * 26.0);
+
+          /* Eis-Farbverlauf: tiefblau → eisblau → frostweiß */
+          vec3 deepIce = vec3(0.14, 0.36, 0.70);
+          vec3 midIce  = vec3(0.45, 0.76, 0.98);
+          vec3 frost   = vec3(0.94, 0.985, 1.0);
+          vec3 iceCol = mix(deepIce, midIce, smoothstep(0.22, 0.62, nBig));
+          iceCol = mix(iceCol, frost, smoothstep(0.55, 0.92, nMid) * 0.9);
+
+          /* Feine dunkle Kristalladern (wie Risse im Eisblock) */
+          float veins = smoothstep(0.035, 0.09, abs(fract(nMid * 3.2) - 0.5) * 0.28 + nFine * 0.03);
+          iceCol *= mix(0.62, 1.0, veins);
+
+          /* Mikro-Glitzern: winzige Facetten blitzen zeitversetzt auf */
+          float sparkle = step(0.984, iceNoise(vIcePos * 42.0 + floor(uTime * 1.6) * 0.71));
+          iceCol += sparkle * vec3(0.75, 0.85, 1.0);
+
+          diffuseColor.rgb = mix(diffuseColor.rgb, iceCol, 0.88);
+        }`
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        /* glsl */ `#include <roughnessmap_fragment>
+        {
+          /* Frost-Flecken: matte, angefrorene Zonen neben blankem Eis */
+          float frostPatch = iceFbm(vIcePos * 5.0 + 3.7);
+          roughnessFactor = mix(0.05, 0.55, smoothstep(0.32, 0.8, frostPatch));
+        }`
+      );
+  };
+
+  return mat;
 }
 
 /* ──────────────────────── Frost-Nebel (FBM-Shader) ──────────────────────── */
@@ -129,14 +246,74 @@ function FrostMist({ fadeRef }: { fadeRef: React.RefObject<{ value: number }> })
 }
 
 /* ─────────────────── Kristall-Schneeflocken (instanziert) ────────────────── */
+
 /**
- * Kleine 3D-Eiskristalle (flache Oktaeder), die endlos herabrieseln,
+ * Baut eine echte sechsarmige Schneeflocke als flache 3D-Geometrie:
+ * 6 Hauptarme (dünne Prismen) + je 2 Seitenverzweigungen pro Arm
+ * + hexagonaler Kern — klassische Dendriten-Form.
+ */
+function createSnowflakeGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const T = 0.06; // Dicke (z) der Flocke
+  const ARM_LEN = 1.0;
+  const ARM_W = 0.09;
+
+  /* Hexagonaler Kern */
+  const core = new THREE.CylinderGeometry(0.16, 0.16, T, 6);
+  core.rotateX(Math.PI / 2);
+  parts.push(core);
+
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI) / 3;
+
+    /* Hauptarm */
+    const arm = new THREE.BoxGeometry(ARM_LEN, ARM_W, T);
+    arm.translate(ARM_LEN / 2, 0, 0);
+    arm.rotateZ(angle);
+    parts.push(arm);
+
+    /* Spitze des Arms (kleine Raute) */
+    const tip = new THREE.CylinderGeometry(0.001, 0.1, 0.22, 4);
+    tip.rotateX(Math.PI / 2);
+    tip.rotateZ(Math.PI / 2);
+    // Ausrichtung: Spitze zeigt nach außen
+    const tipG = tip.clone();
+    tipG.rotateZ(angle);
+    const tx = Math.cos(angle) * (ARM_LEN + 0.1);
+    const ty = Math.sin(angle) * (ARM_LEN + 0.1);
+    tipG.translate(tx, ty, 0);
+    parts.push(tipG);
+    tip.dispose();
+
+    /* Zwei Paar Seitenverzweigungen pro Arm (bei 45% und 75% der Länge) */
+    for (const frac of [0.45, 0.75]) {
+      const branchLen = 0.34 * (1.15 - frac);
+      for (const side of [1, -1]) {
+        const branch = new THREE.BoxGeometry(branchLen, ARM_W * 0.7, T * 0.85);
+        branch.translate(branchLen / 2, 0, 0);
+        /* Verzweigung sitzt am Arm und geht in ±60° davon ab */
+        branch.rotateZ((side * Math.PI) / 3);
+        branch.translate(ARM_LEN * frac, 0, 0);
+        branch.rotateZ(angle);
+        parts.push(branch);
+      }
+    }
+  }
+
+  const merged = mergeGeometries(parts, false);
+  parts.forEach((p) => p.dispose());
+  return merged ?? new THREE.OctahedronGeometry(1, 0);
+}
+
+/**
+ * Echte sechsarmige Kristall-Schneeflocken, die endlos herabrieseln,
  * dabei taumeln und im Licht aufblitzen — ein einziger Draw-Call.
  */
 function CrystalSnow() {
-  const COUNT = 260;
+  const COUNT = 200;
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const geometry = useMemo(() => createSnowflakeGeometry(), []);
 
   const flakes = useMemo(() => {
     const rand = seededRandom(9182);
@@ -144,12 +321,14 @@ function CrystalSnow() {
       x: (rand() - 0.5) * 26,
       y0: rand() * 14,
       z: -10 + rand() * 13,
-      fall: 0.25 + rand() * 0.55, // Fallgeschwindigkeit
+      fall: 0.22 + rand() * 0.5, // Fallgeschwindigkeit
       sway: 0.3 + rand() * 0.8, // seitliches Pendeln
       swayFreq: 0.3 + rand() * 0.7,
-      spinX: (rand() - 0.5) * 1.6,
-      spinY: (rand() - 0.5) * 2.0,
-      scale: 0.02 + rand() * 0.055,
+      /* Schneeflocken trudeln flach — sanftes Kippen statt wildem Spin */
+      tiltX: 0.35 + rand() * 0.5,
+      tiltY: 0.25 + rand() * 0.45,
+      spinZ: (rand() - 0.5) * 1.2, // Rotation um die eigene Achse
+      scale: 0.05 + rand() * 0.09,
       phase: rand() * Math.PI * 2,
     }));
   }, []);
@@ -165,7 +344,12 @@ function CrystalSnow() {
       const y = ((f.y0 - f.fall * t) % H + H) % H - H / 2;
       const x = f.x + Math.sin(t * f.swayFreq + f.phase) * f.sway;
       dummy.position.set(x, y, f.z);
-      dummy.rotation.set(t * f.spinX + f.phase, t * f.spinY, f.phase);
+      /* Flaches Trudeln wie echte Schneeflocken */
+      dummy.rotation.set(
+        Math.sin(t * f.tiltX + f.phase) * 0.65,
+        Math.sin(t * f.tiltY + f.phase * 1.3) * 0.55,
+        t * f.spinZ + f.phase
+      );
       dummy.scale.setScalar(f.scale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
@@ -176,23 +360,24 @@ function CrystalSnow() {
   return (
     <instancedMesh
       ref={meshRef}
-      args={[undefined, undefined, COUNT]}
+      args={[geometry, undefined, COUNT]}
       frustumCulled={false}
     >
-      {/* Flacher Oktaeder = einfacher Eiskristall */}
-      <octahedronGeometry args={[1, 0]} />
       <meshPhysicalMaterial
-        color="#dff2ff"
-        metalness={0.1}
-        roughness={0.05}
-        transmission={0.6}
-        thickness={0.4}
+        color="#eaf6ff"
+        metalness={0.05}
+        roughness={0.08}
+        transmission={0.5}
+        thickness={0.3}
         ior={1.31}
+        iridescence={0.5}
+        iridescenceIOR={1.3}
         transparent
-        opacity={0.85}
-        envMapIntensity={2}
+        opacity={0.9}
+        envMapIntensity={2.2}
         emissive="#9fd4ff"
-        emissiveIntensity={0.15}
+        emissiveIntensity={0.22}
+        side={THREE.DoubleSide}
       />
     </instancedMesh>
   );
@@ -298,6 +483,20 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
   const groupRefs = useRef<(THREE.Group | null)[]>([]);
   const materialRefs = useRef<(THREE.MeshPhysicalMaterial | null)[]>([]);
+
+  /* Ein komplexes Eis-Material pro Buchstabe (eigener Noise-Offset,
+     damit Opacity/Emissive individuell animierbar bleiben) */
+  const iceMaterials = useMemo(
+    () => layout.map(() => createIceMaterial()),
+    [layout]
+  );
+  useEffect(() => {
+    materialRefs.current = iceMaterials;
+    return () => {
+      iceMaterials.forEach((m) => m.dispose());
+    };
+  }, [iceMaterials]);
+
   /** Gemeinsamer Fade für Frost-Nebel */
   const mistFade = useRef({ value: 0 });
   const wrapperRef = useRef<THREE.Group>(null);
@@ -399,6 +598,11 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
     wrapperRef.current.rotation.x = Math.sin(t * 0.4) * 0.015 * amp;
     wrapperRef.current.rotation.y = Math.cos(t * 0.5) * 0.02 * amp;
 
+    /* Shader-Zeit fürs wandernde Mikro-Glitzern (endlos) */
+    materialRefs.current.forEach((mat) => {
+      if (mat?.userData.uTime) mat.userData.uTime.value = t;
+    });
+
     /* Sanftes, endloses Eis-Schimmern (viel ruhiger als Feuer-Flackern) */
     if (introDone.current) {
       materialRefs.current.forEach((mat, i) => {
@@ -435,6 +639,8 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
               <group
                 position={[-letter.advance / 2, -CAP_HEIGHT / 2, -DEPTH / 2]}
               >
+                {/* Komplexes Eis-Material: Farbverlauf, Kristalladern,
+                    Frost-Flecken & Mikro-Glitzern (Shader-Patch) */}
                 <Text3D
                   font={FONT_URL}
                   size={SIZE}
@@ -444,29 +650,9 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
                   bevelThickness={0.03}
                   bevelSize={0.018}
                   bevelSegments={5}
+                  material={iceMaterials[i]}
                 >
                   {letter.char}
-                  {/* Glasklares Eis: Transmission + bläulicher Frost */}
-                  <meshPhysicalMaterial
-                    ref={(el) => {
-                      materialRefs.current[i] = el;
-                    }}
-                    color="#cfeaff"
-                    metalness={0.05}
-                    roughness={0.12}
-                    transmission={0.7}
-                    thickness={0.9}
-                    ior={1.31}
-                    clearcoat={1}
-                    clearcoatRoughness={0.25}
-                    attenuationColor="#7ec2ff"
-                    attenuationDistance={1.6}
-                    emissive="#9fd4ff"
-                    emissiveIntensity={0}
-                    envMapIntensity={1.4}
-                    transparent
-                    opacity={0}
-                  />
                 </Text3D>
               </group>
             </group>
