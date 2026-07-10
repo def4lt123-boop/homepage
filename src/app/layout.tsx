@@ -27,6 +27,8 @@ export const viewport: Viewport = {
   themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
+  // iOS Safari: Canvas & Inhalte hinter die Notch/Home-Indicator ziehen
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

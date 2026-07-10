@@ -34,6 +34,19 @@ const CAP_HEIGHT = 0.72;
 
 useFont.preload(FONT_URL);
 
+/**
+ * Mobile-Erkennung (einmalig beim Mount) — steuert Partikelmengen,
+ * Pixel-Ratio und Effektdichte für Android (Chrome/Firefox/Samsung
+ * Internet) und iOS Safari.
+ */
+function useIsMobile(): boolean {
+  // SSR-sicher: Hero3D wird nur clientseitig geladen (dynamic, ssr:false)
+  if (typeof window === "undefined") return false;
+  const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const small = window.innerWidth < 768;
+  return coarse || small;
+}
+
 /** Deterministischer Pseudo-Zufall → stabile Positionen */
 function seededRandom(seed: number) {
   let s = seed % 2147483647;
@@ -309,8 +322,8 @@ function createSnowflakeGeometry(): THREE.BufferGeometry {
  * Echte sechsarmige Kristall-Schneeflocken, die endlos herabrieseln,
  * dabei taumeln und im Licht aufblitzen — ein einziger Draw-Call.
  */
-function CrystalSnow() {
-  const COUNT = 200;
+function CrystalSnow({ count = 200 }: { count?: number }) {
+  const COUNT = count;
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const geometry = useMemo(() => createSnowflakeGeometry(), []);
@@ -331,7 +344,7 @@ function CrystalSnow() {
       scale: 0.05 + rand() * 0.09,
       phase: rand() * Math.PI * 2,
     }));
-  }, []);
+  }, [COUNT]);
 
   useFrame((state) => {
     const mesh = meshRef.current;
@@ -753,6 +766,10 @@ export default function Hero3D({
 }: {
   onIntroComplete?: () => void;
 }) {
+  /* Mobile: weniger Partikel & begrenzte Pixel-Ratio → flüssig auf
+     Android (Chrome/Firefox/Samsung Internet) und iOS Safari */
+  const isMobile = useIsMobile();
+
   return (
     <div className="absolute inset-0 h-full w-full">
       {/* ── Winter-Hintergrund: eisige Nebel hinter dem Canvas ── */}
@@ -805,8 +822,12 @@ export default function Hero3D({
 
       <Canvas
         camera={{ position: [0, 2.2, 17], fov: 40, near: 0.1, far: 100 }}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-        dpr={[1, 2]}
+        gl={{
+          antialias: !isMobile,
+          alpha: true,
+          powerPreference: "high-performance",
+        }}
+        dpr={isMobile ? [1, 1.5] : [1, 2]}
       >
         <fog attach="fog" args={["#010208", 12, 42]} />
 
@@ -816,11 +837,11 @@ export default function Hero3D({
         <WarpStreaks />
 
         {/* Kristall-Schneeflocken — endloses Herabrieseln */}
-        <CrystalSnow />
+        <CrystalSnow count={isMobile ? 90 : 200} />
 
         {/* Funkelnder Schneestaub in zwei Ebenen */}
         <Sparkles
-          count={120}
+          count={isMobile ? 60 : 120}
           size={1.8}
           speed={0.18}
           opacity={0.4}
@@ -829,7 +850,7 @@ export default function Hero3D({
           color="#cfe9ff"
         />
         <Sparkles
-          count={50}
+          count={isMobile ? 25 : 50}
           size={3.2}
           speed={0.28}
           opacity={0.3}

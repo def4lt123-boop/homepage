@@ -43,9 +43,14 @@ body {
   overscroll-behavior: none;
 }
 
-/* Clean canvas: no scrollbars during the 3D intro */
+/* Sanftes Scrollen zur Projekt-Sektion */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Kein horizontales Wackeln — vertikales Scrollen ist jetzt erlaubt */
 body {
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 ::selection {
@@ -91,4 +96,19 @@ body {
   filter: blur(90px);
   will-change: transform;
   pointer-events: none;
+}
+
+/* Mobile: kleinerer Blur-Radius → deutlich günstiger auf
+   Android-GPUs & iOS Safari, optisch kaum Unterschied */
+@media (max-width: 767px) {
+  .aurora-blob {
+    filter: blur(48px);
+  }
+}
+
+/* Nutzer mit reduzierter Bewegung: Hintergrund-Drift deaktivieren */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob {
+    animation: none !important;
+  }
 }

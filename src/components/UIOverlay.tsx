@@ -173,6 +173,40 @@ export default function UIOverlay({ visible }: { visible: boolean }) {
             <GlassCard key={item.href} item={item} index={i} />
           ))}
         </div>
+
+        {/* Scroll-Hinweis zur Projekt-Sektion */}
+        <motion.a
+          href="#projekte"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: { duration: 1.2, delay: 0.5 },
+            },
+          }}
+          className="pointer-events-auto mt-1 flex flex-col items-center gap-1.5
+                     text-white/30 transition-colors duration-300 hover:text-white/60"
+          aria-label="Zu den Projekten scrollen"
+        >
+          <span className="text-[10px] font-medium uppercase tracking-[0.3em]">
+            Mehr entdecken
+          </span>
+          <motion.svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            animate={reducedMotion ? undefined : { y: [0, 5, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            aria-hidden
+          >
+            <path d="m6 9 6 6 6-6" />
+          </motion.svg>
+        </motion.a>
       </div>
     </motion.div>
   );
