@@ -583,7 +583,9 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
             at + 1.35
           ).to(
             mat,
-            { emissiveIntensity: 0.28, duration: 1.0, ease: "power2.out" },
+            /* Wichtig: fast auf Null abklingen — dauerhaftes Leuchten
+               würde die Frost-Struktur überstrahlen ("glattwaschen") */
+            { emissiveIntensity: 0.05, duration: 1.4, ease: "power2.out" },
             at + 1.57
           );
         }
@@ -607,7 +609,19 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
     if (!wrapperRef.current) return;
     const t = state.clock.elapsedTime;
     const amp = introDone.current ? 1 : 0.25;
-    wrapperRef.current.position.y = Math.sin(t * 0.6) * 0.05 * amp;
+
+    /* Vertikale Zentrierung: Im Portrait-Format (Mobile) sitzt das UI
+       (Cards + Tagline) deutlich höher — der Schriftzug wandert daher
+       nach oben, damit er optisch mittig im freien Bereich steht. */
+    const aspect = state.viewport.aspect;
+    const portraitLift = THREE.MathUtils.clamp(
+      (1.1 - aspect) * 1.6, // greift unterhalb von aspect ≈ 1.1
+      0,
+      1.6
+    );
+
+    wrapperRef.current.position.y =
+      portraitLift + Math.sin(t * 0.6) * 0.05 * amp;
     wrapperRef.current.rotation.x = Math.sin(t * 0.4) * 0.015 * amp;
     wrapperRef.current.rotation.y = Math.cos(t * 0.5) * 0.02 * amp;
 
@@ -616,14 +630,19 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
       if (mat?.userData.uTime) mat.userData.uTime.value = t;
     });
 
-    /* Sanftes, endloses Eis-Schimmern (viel ruhiger als Feuer-Flackern) */
+    /* Sanftes, endloses Eis-Schimmern — bewusst sehr niedrig gehalten,
+       damit das Emissive die Frost-Struktur (Adern, Frost-Flecken,
+       Farbverlauf) NICHT überstrahlt. Nur gelegentliches Aufblitzen. */
     if (introDone.current) {
       materialRefs.current.forEach((mat, i) => {
         if (!mat) return;
         const s = shimmerSeeds[i];
-        mat.emissiveIntensity =
-          0.26 + Math.sin(t * s * 0.8 + i * 1.7) * 0.08 +
-          Math.sin(t * s * 2.3 + i * 0.9) * 0.04;
+        /* Basis fast Null + seltene, kurze Glitzer-Spitzen */
+        const wave =
+          Math.sin(t * s * 0.8 + i * 1.7) * 0.5 +
+          Math.sin(t * s * 2.3 + i * 0.9) * 0.5;
+        const spike = Math.max(0, wave - 0.72) * 0.55; // nur Spitzen > Schwelle
+        mat.emissiveIntensity = 0.03 + spike;
       });
     }
 
