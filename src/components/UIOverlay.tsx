@@ -35,7 +35,7 @@ const LINKS: LinkItem[] = [
   },
   {
     title: "Eskalero",
-    subtitle: "TODO: Kurzbeschreibung",
+    subtitle: "Würfelpoker",
     href: "https://eskalero.vercel.app/",
   },
   {
