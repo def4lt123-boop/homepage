@@ -24,6 +24,7 @@ type Project = {
   href: string;
   image: string;
   accent: string;
+  locked?: boolean;
 };
 
 const PROJECTS: Project[] = [
@@ -44,6 +45,24 @@ const PROJECTS: Project[] = [
     href: "https://flosraetsel.vercel.app/",
     image: "/previews/flos-raetsel.jpg",
     accent: "#b8a8ff",
+  },
+  {
+    title: "Eskalero",
+    subtitle: "TODO: Kurzbeschreibung",
+    description: "TODO: Beschreibung ergänzen.",
+    href: "https://eskalero.vercel.app/",
+    image: "/previews/eskalero.jpg",
+    accent: "#ff9f7e",
+  },
+  {
+    title: "Springerplan",
+    subtitle: "Schicht- & Springer-Planung",
+    description:
+      "PWA für Schichtbuchung und Springer-Verwaltung – geschützter Zugang für's Team.",
+    href: "https://springerplan.vercel.app/",
+    image: "/previews/springerplan.jpg",
+    accent: "#7effb0",
+    locked: true,
   },
 ];
 
@@ -81,6 +100,31 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
       >
         {/* Vorschaubild */}
         <div className="relative aspect-[16/10] w-full overflow-hidden bg-black/40">
+          {project.locked && (
+            <div
+              aria-hidden
+              className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full
+                         border border-white/15 bg-black/50 px-3 py-1.5 backdrop-blur-md"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-white/70"
+              >
+                <rect x="5" y="11" width="14" height="9" rx="2" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+              <span className="text-[10px] font-medium uppercase tracking-wide text-white/70">
+                Geschützt
+              </span>
+            </div>
+          )}
           <motion.img
             src={project.image}
             alt={`Vorschau von ${project.title}`}

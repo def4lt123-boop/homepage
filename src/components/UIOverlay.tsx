@@ -19,6 +19,7 @@ type LinkItem = {
   title: string;
   subtitle: string;
   href: string;
+  locked?: boolean;
 };
 
 const LINKS: LinkItem[] = [
@@ -31,6 +32,17 @@ const LINKS: LinkItem[] = [
     title: "Flos Rätsel",
     subtitle: "Knobeln & Rätseln",
     href: "https://flosraetsel.vercel.app/",
+  },
+  {
+    title: "Eskalero",
+    subtitle: "TODO: Kurzbeschreibung",
+    href: "https://eskalero.vercel.app/",
+  },
+  {
+    title: "Springerplan",
+    subtitle: "Geschützt · Team-Login",
+    href: "https://springerplan.vercel.app/",
+    locked: true,
   },
 ];
 
@@ -88,8 +100,27 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
         className="relative z-10 flex items-center justify-between gap-4 px-6 py-5"
       >
         <span className="flex flex-col gap-0.5">
-          <span className="text-[15px] font-semibold tracking-tight text-white">
-            {item.title}
+          <span className="flex items-center gap-1.5">
+            <span className="text-[15px] font-semibold tracking-tight text-white">
+              {item.title}
+            </span>
+            {item.locked && (
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0 text-white/40"
+                aria-hidden
+              >
+                <rect x="5" y="11" width="14" height="9" rx="2" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+            )}
           </span>
           <span className="text-[12px] font-medium text-white/45 transition-colors duration-500 group-hover:text-white/60">
             {item.subtitle}
@@ -168,7 +199,7 @@ export default function UIOverlay({ visible }: { visible: boolean }) {
           Entdecke meine Projekte.
         </motion.p>
 
-        <div className="flex w-full max-w-sm flex-col items-stretch gap-3.5 sm:max-w-none sm:w-auto sm:flex-row sm:gap-5">
+        <div className="flex w-full max-w-sm flex-col items-stretch gap-3.5 sm:max-w-none sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center sm:gap-5">
           {LINKS.map((item, i) => (
             <GlassCard key={item.href} item={item} index={i} />
           ))}
