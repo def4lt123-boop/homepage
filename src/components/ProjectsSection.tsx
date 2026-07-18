@@ -48,8 +48,8 @@ const PROJECTS: Project[] = [
   },
   {
     title: "Eskalero",
-    subtitle: "TODO: Kurzbeschreibung",
-    description: "TODO: Beschreibung ergänzen.",
+    subtitle: "Würfelpoker",
+    description: "Spielblock für Eskalero - Digital und Analog.",
     href: "https://eskalero.vercel.app/",
     image: "/previews/eskalero.jpg",
     accent: "#ff9f7e",
