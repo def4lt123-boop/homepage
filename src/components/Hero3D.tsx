@@ -473,7 +473,13 @@ type LetterLayout = {
   advance: number;
 };
 
-function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
+function FlyingLetters({
+  onIntroComplete,
+  cardCount = 2,
+}: {
+  onIntroComplete?: () => void;
+  cardCount?: number;
+}) {
   const font = useFont(FONT_URL);
 
   const layout = useMemo<LetterLayout[]>(() => {
@@ -612,13 +618,21 @@ function FlyingLetters({ onIntroComplete }: { onIntroComplete?: () => void }) {
 
     /* Vertikale Zentrierung: Im Portrait-Format (Mobile) sitzt das UI
        (Cards + Tagline) deutlich höher — der Schriftzug wandert daher
-       nach oben, damit er optisch mittig im freien Bereich steht. */
+       nach oben, damit er optisch mittig im freien Bereich steht.
+       Zusätzliche Cards stapeln sich im Hochformat untereinander und
+       machen den Block darunter höher → der Schriftzug muss dann noch
+       etwas weiter nach oben ausweichen, sonst rutscht er dahinter. */
     const aspect = state.viewport.aspect;
-    const portraitLift = THREE.MathUtils.clamp(
-      (1.1 - aspect) * 1.6, // greift unterhalb von aspect ≈ 1.1
-      0,
-      1.6
-    );
+    const portraitStrength =
+      THREE.MathUtils.clamp((1.1 - aspect) * 1.6, 0, 1.6) / 1.6; // 0…1
+    const basePortraitLift = portraitStrength * 1.6;
+
+    const CARD_BASELINE = 2; // ursprüngliche Kalibrierung (Flos Tools + Flos Rätsel)
+    const LIFT_PER_EXTRA_CARD = 0.4; // world units pro zusätzlicher gestapelter Card
+    const extraCards = Math.max(0, cardCount - CARD_BASELINE);
+    const extraLift = portraitStrength * extraCards * LIFT_PER_EXTRA_CARD;
+
+    const portraitLift = basePortraitLift + extraLift;
 
     wrapperRef.current.position.y =
       portraitLift + Math.sin(t * 0.6) * 0.05 * amp;
@@ -782,8 +796,13 @@ function WinterLighting() {
 
 export default function Hero3D({
   onIntroComplete,
+  cardCount = 2,
 }: {
   onIntroComplete?: () => void;
+  /** Anzahl der Link-Cards im UIOverlay — im Hochformat werden sie
+   *  untereinander gestapelt, je mehr es sind, desto höher der Block
+   *  und desto weiter muss der Schriftzug nach oben ausweichen. */
+  cardCount?: number;
 }) {
   /* Mobile: weniger Partikel & begrenzte Pixel-Ratio → flüssig auf
      Android (Chrome/Firefox/Samsung Internet) und iOS Safari */
@@ -852,7 +871,7 @@ export default function Hero3D({
 
         <CameraRig />
         <WinterLighting />
-        <FlyingLetters onIntroComplete={onIntroComplete} />
+        <FlyingLetters onIntroComplete={onIntroComplete} cardCount={cardCount} />
         <WarpStreaks />
 
         {/* Kristall-Schneeflocken — endloses Herabrieseln */}

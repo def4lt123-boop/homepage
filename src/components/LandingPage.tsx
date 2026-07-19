@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import UIOverlay from "./UIOverlay";
+import UIOverlay, { LINK_COUNT } from "./UIOverlay";
 import ProjectsSection from "./ProjectsSection";
 
 /**
@@ -43,7 +43,7 @@ export default function LandingPage() {
     <main className="relative w-full bg-black">
       {/* ── Hero: ein voller Viewport, Leinwand fürs 3D-Intro ── */}
       <section className="relative h-[100svh] w-full overflow-hidden supports-[height:100dvh]:h-dvh">
-        <Hero3D onIntroComplete={handleIntroComplete} />
+        <Hero3D onIntroComplete={handleIntroComplete} cardCount={LINK_COUNT} />
 
         {/* UI-Layer über dem Canvas */}
         <UIOverlay visible={uiVisible} />

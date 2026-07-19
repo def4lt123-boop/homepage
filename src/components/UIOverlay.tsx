@@ -46,6 +46,8 @@ const LINKS: LinkItem[] = [
   },
 ];
 
+export const LINK_COUNT = LINKS.length;
+
 function GlassCard({ item, index }: { item: LinkItem; index: number }) {
   return (
     <motion.a
