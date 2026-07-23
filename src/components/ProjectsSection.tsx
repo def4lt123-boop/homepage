@@ -163,7 +163,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
             >
               {project.subtitle}
             </p>
-            <h3 className="mt-1 text-xl font-semibold tracking-tight text-white sm:text-2xl">
+            <h3 className="font-display mt-1 text-xl font-medium tracking-tight text-white sm:text-2xl">
               {project.title}
             </h3>
             <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-white/45 sm:text-sm">
@@ -234,7 +234,7 @@ export default function ProjectsSection() {
           <p className="text-[11px] font-medium uppercase tracking-[0.42em] text-white/35">
             Projekte
           </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+          <h2 className="font-display mt-3 text-3xl font-medium tracking-tight text-white sm:text-4xl">
             Entdecke meine Websites
           </h2>
         </motion.header>

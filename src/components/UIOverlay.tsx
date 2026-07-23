@@ -103,7 +103,7 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
       >
         <span className="flex flex-col gap-0.5">
           <span className="flex items-center gap-1.5">
-            <span className="text-[15px] font-semibold tracking-tight text-white">
+            <span className="font-display text-[16px] font-medium tracking-tight text-white">
               {item.title}
             </span>
             {item.locked && (
