@@ -19,7 +19,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Text3D, Sparkles, useFont } from "@react-three/drei";
+import {
+  Text3D,
+  Sparkles,
+  useFont,
+  Environment,
+  Lightformer,
+} from "@react-three/drei";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import gsap from "gsap";
 
@@ -47,6 +53,16 @@ function useIsMobile(): boolean {
   return coarse || small;
 }
 
+/**
+ * Nutzer mit "Bewegung reduzieren" (OS-Einstellung): Buchstaben-Flug,
+ * Kamera-Dolly und die endlose Schwebe-/Parallax-Bewegung werden
+ * übersprungen bzw. eingefroren — nur das ruhige Eis-Glitzern bleibt.
+ */
+function usePrefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
 /** Deterministischer Pseudo-Zufall → stabile Positionen */
 function seededRandom(seed: number) {
   let s = seed % 2147483647;
@@ -67,22 +83,32 @@ function createIceMaterial(): THREE.MeshPhysicalMaterial {
   const mat = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color("#e8f5ff"),
     metalness: 0.02,
-    roughness: 0.14,
+    roughness: 0.16,
     transmission: 0.55,
     thickness: 1.1,
     ior: 1.31,
     clearcoat: 1,
-    clearcoatRoughness: 0.2,
+    clearcoatRoughness: 0.22,
     attenuationColor: new THREE.Color("#4da3ff"),
     attenuationDistance: 1.2,
-    iridescence: 0.4,
-    iridescenceIOR: 1.31,
-    sheen: 0.5,
-    sheenColor: new THREE.Color("#bfe9ff"),
-    sheenRoughness: 0.5,
+    // Dezent statt regenbogenfarben — starke Iridescence ist der
+    // klassische "billiger Glasbutton"-Tell. Ein Hauch reicht für den
+    // perlmuttartigen Schimmer, ohne nach CSS3-Badge auszusehen.
+    iridescence: 0.15,
+    iridescenceIOR: 1.28,
+    sheen: 0.22,
+    sheenColor: new THREE.Color("#cfeaff"),
+    sheenRoughness: 0.7,
+    // Kalte, leicht bläuliche Spekularität statt neutralem Weiß —
+    // liest sich sofort als "kalte Oberfläche" statt als Kunststoff.
+    specularIntensity: 1.1,
+    specularColor: new THREE.Color("#dff2ff"),
     emissive: new THREE.Color("#9fd4ff"),
     emissiveIntensity: 0,
-    envMapIntensity: 1.6,
+    // Reflexionen kommen jetzt von der echten <Environment> in der
+    // Szene (siehe Hero3D-Komponente) statt nur von den Lichtquellen —
+    // das ist der Hauptgrund, warum PBR-Glas/Eis vorher flach wirkte.
+    envMapIntensity: 1.3,
     transparent: true,
     opacity: 0,
   });
@@ -138,10 +164,13 @@ function createIceMaterial(): THREE.MeshPhysicalMaterial {
           float nMid  = iceFbm(vIcePos * 6.5 + 13.0);
           float nFine = iceNoise(vIcePos * 26.0);
 
-          /* Eis-Farbverlauf: tiefblau → eisblau → frostweiß */
-          vec3 deepIce = vec3(0.14, 0.36, 0.70);
-          vec3 midIce  = vec3(0.45, 0.76, 0.98);
-          vec3 frost   = vec3(0.94, 0.985, 1.0);
+          /* Eis-Farbverlauf: tiefblau → eisblau → frostweiß
+             (bewusst etwas entsättigt gegenüber "Clip-Art-Blau" —
+             echtes Gletschereis wirkt durch Tiefe/Streuung bläulich,
+             nicht durch reine Farbsättigung) */
+          vec3 deepIce = vec3(0.11, 0.27, 0.52);
+          vec3 midIce  = vec3(0.52, 0.78, 0.95);
+          vec3 frost   = vec3(0.95, 0.985, 1.0);
           vec3 iceCol = mix(deepIce, midIce, smoothstep(0.22, 0.62, nBig));
           iceCol = mix(iceCol, frost, smoothstep(0.55, 0.92, nMid) * 0.9);
 
@@ -379,17 +408,17 @@ function CrystalSnow({ count = 200 }: { count?: number }) {
       <meshPhysicalMaterial
         color="#eaf6ff"
         metalness={0.05}
-        roughness={0.08}
+        roughness={0.1}
         transmission={0.5}
         thickness={0.3}
         ior={1.31}
-        iridescence={0.5}
+        iridescence={0.18}
         iridescenceIOR={1.3}
         transparent
         opacity={0.9}
-        envMapIntensity={2.2}
+        envMapIntensity={1.6}
         emissive="#9fd4ff"
-        emissiveIntensity={0.22}
+        emissiveIntensity={0.1}
         side={THREE.DoubleSide}
       />
     </instancedMesh>
@@ -398,13 +427,13 @@ function CrystalSnow({ count = 200 }: { count?: number }) {
 
 /* ────────────────────────────── Warp-Streaks ────────────────────────────── */
 /** Eisige Lichtstreifen, die während des Intros vorbeiziehen */
-function WarpStreaks() {
+function WarpStreaks({ skip = false }: { skip?: boolean }) {
   const COUNT = 64;
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const matRef = useRef<THREE.MeshBasicMaterial>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const startTime = useRef<number | null>(null);
-  const done = useRef(false);
+  const done = useRef(skip);
 
   const seeds = useMemo(() => {
     const rand = seededRandom(4242);
@@ -476,9 +505,14 @@ type LetterLayout = {
 function FlyingLetters({
   onIntroComplete,
   cardCount = 2,
+  skipIntro = false,
 }: {
   onIntroComplete?: () => void;
   cardCount?: number;
+  /** Kein Flug-Intro: Buchstaben stehen sofort an ihrer finalen
+   *  Position (Wiederholungsbesuch in derselben Session, oder
+   *  "Bewegung reduzieren" aktiv). */
+  skipIntro?: boolean;
 }) {
   const font = useFont(FONT_URL);
 
@@ -541,10 +575,28 @@ function FlyingLetters({
     });
   }, [layout]);
 
-  /* GSAP-Intro: Stagger-Flug in die finale Position */
+  /* GSAP-Intro: Stagger-Flug in die finale Position
+     (übersprungen bei Wiederholungsbesuch oder "Bewegung reduzieren") */
   useEffect(() => {
     const groups = groupRefs.current.filter(Boolean) as THREE.Group[];
     if (groups.length === 0) return;
+
+    if (skipIntro) {
+      groups.forEach((group, i) => {
+        const mat = materialRefs.current[i];
+        group.position.set(0, 0, 0);
+        group.rotation.set(0, 0, 0);
+        group.scale.setScalar(1);
+        if (mat) {
+          mat.opacity = 1;
+          mat.emissiveIntensity = 0.05;
+        }
+      });
+      mistFade.current.value = 1;
+      introDone.current = true;
+      onIntroComplete?.();
+      return;
+    }
 
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({
@@ -602,7 +654,7 @@ function FlyingLetters({
     });
 
     return () => ctx.revert();
-  }, [scatter, onIntroComplete]);
+  }, [scatter, onIntroComplete, skipIntro]);
 
   const totalWidth = useMemo(() => {
     if (layout.length === 0) return 1;
@@ -610,11 +662,15 @@ function FlyingLetters({
     return last.x + last.advance - layout[0].x;
   }, [layout]);
 
+  const reducedMotion = usePrefersReducedMotion();
+
   /* Endlos-Loop: Schweben + eisiges Glitzern (läuft für immer) */
   useFrame((state) => {
     if (!wrapperRef.current) return;
     const t = state.clock.elapsedTime;
-    const amp = introDone.current ? 1 : 0.25;
+    /* Bei "Bewegung reduzieren": kein Schweben/Wackeln mehr, nur noch
+       das ruhige, ortsfeste Glitzern der Eis-Textur bleibt aktiv. */
+    const amp = reducedMotion ? 0 : introDone.current ? 1 : 0.25;
 
     /* Vertikale Zentrierung: Im Portrait-Format (Mobile) sitzt das UI
        (Cards + Tagline) deutlich höher — der Schriftzug wandert daher
@@ -715,11 +771,18 @@ function FlyingLetters({
 
 /* ─────────────────────────────── Kamera-Rig ─────────────────────────────── */
 
-function CameraRig() {
+function CameraRig({ skipIntro = false }: { skipIntro?: boolean }) {
   const { camera } = useThree();
   const parallax = useRef({ x: 0, y: 0 });
+  const reducedMotion = usePrefersReducedMotion();
+  const noAnim = skipIntro || reducedMotion;
 
   useEffect(() => {
+    if (noAnim) {
+      // Direkt an der finalen Kamera-Position — kein Dolly-Flug.
+      camera.position.set(0, 0, 8.5);
+      return;
+    }
     camera.position.set(0, 2.2, 17);
     const tween = gsap.to(camera.position, {
       y: 0,
@@ -730,9 +793,13 @@ function CameraRig() {
     return () => {
       tween.kill();
     };
-  }, [camera]);
+  }, [camera, noAnim]);
 
   useFrame((state) => {
+    // Bei reduzierter Bewegung bleibt die Kamera ruhig stehen, statt
+    // der Maus/dem Finger endlos zu folgen.
+    if (reducedMotion) return;
+
     const p = parallax.current;
     p.x += (state.pointer.x * 0.5 - p.x) * 0.035;
     p.y += (state.pointer.y * 0.3 - p.y) * 0.035;
@@ -801,12 +868,16 @@ function WinterLighting() {
 export default function Hero3D({
   onIntroComplete,
   cardCount = 2,
+  skipIntro = false,
 }: {
   onIntroComplete?: () => void;
   /** Anzahl der Link-Cards im UIOverlay — im Hochformat werden sie
    *  untereinander gestapelt, je mehr es sind, desto höher der Block
    *  und desto weiter muss der Schriftzug nach oben ausweichen. */
   cardCount?: number;
+  /** Intro überspringen (Wiederholungsbesuch in derselben Session).
+   *  "Bewegung reduzieren" wird zusätzlich intern erkannt. */
+  skipIntro?: boolean;
 }) {
   /* Mobile: weniger Partikel & begrenzte Pixel-Ratio → flüssig auf
      Android (Chrome/Firefox/Samsung Internet) und iOS Safari */
@@ -873,10 +944,54 @@ export default function Hero3D({
       >
         <fog attach="fog" args={["#010208", 12, 42]} />
 
-        <CameraRig />
+        {/* Statische, günstige Environment (einmal gebacken, frames=1)
+            nur für Reflexionen/Highlights auf dem Eis-Material — ohne
+            das wirkt PBR-Glas/Eis immer flach und "plastikig", egal
+            wie die übrigen Material-Parameter stehen. */}
+        <Environment resolution={128} frames={1}>
+          <group>
+            <Lightformer
+              form="rect"
+              intensity={2.4}
+              color="#eaf6ff"
+              position={[0, 4, 5]}
+              scale={[8, 3, 1]}
+            />
+            <Lightformer
+              form="rect"
+              intensity={1.1}
+              color="#4da8ff"
+              position={[-6, 1, 3]}
+              scale={[4, 6, 1]}
+              rotation={[0, Math.PI / 3, 0]}
+            />
+            <Lightformer
+              form="rect"
+              intensity={1.4}
+              color="#ffffff"
+              position={[6, -2, 4]}
+              scale={[3, 5, 1]}
+              rotation={[0, -Math.PI / 3, 0]}
+            />
+            <Lightformer
+              form="rect"
+              intensity={0.5}
+              color="#b8d8ff"
+              position={[0, -6, -2]}
+              scale={[10, 4, 1]}
+              rotation={[Math.PI / 2, 0, 0]}
+            />
+          </group>
+        </Environment>
+
+        <CameraRig skipIntro={skipIntro} />
         <WinterLighting />
-        <FlyingLetters onIntroComplete={onIntroComplete} cardCount={cardCount} />
-        <WarpStreaks />
+        <FlyingLetters
+          onIntroComplete={onIntroComplete}
+          cardCount={cardCount}
+          skipIntro={skipIntro}
+        />
+        <WarpStreaks skip={skipIntro} />
 
         {/* Kristall-Schneeflocken — endloses Herabrieseln */}
         <CrystalSnow count={isMobile ? 90 : 200} />
