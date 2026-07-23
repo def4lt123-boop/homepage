@@ -112,3 +112,43 @@ body {
     animation: none !important;
   }
 }
+
+/* ─────────────────────────────────────────────
+   Frost-Overlay — sehr langsames "Atmen" der
+   Reif-Deckkraft an den Bildschirmrändern
+   ───────────────────────────────────────────── */
+@keyframes frost-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+.frost-breathe {
+  animation: frost-breathe 9s ease-in-out infinite;
+  opacity: 0.5;
+}
+
+/* ─────────────────────────────────────────────
+   Lade-Spinner (Ersatz für "Loading Experience")
+   ───────────────────────────────────────────── */
+.frost-spin {
+  animation: spin 1.3s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frost-breathe {
+    animation: none;
+    opacity: 0.6;
+  }
+  .frost-spin {
+    animation: none;
+  }
+}
