@@ -17,6 +17,7 @@
   --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
 }
 
 /* ─────────────────────────────────────────────
@@ -110,57 +111,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .aurora-blob {
     animation: none !important;
-  }
-}
-
-/* ─────────────────────────────────────────────
-   Frost-Overlay — sehr langsames "Atmen" der
-   Reif-Deckkraft an den Bildschirmrändern
-   ───────────────────────────────────────────── */
-:root {
-  --frost-intensity: 0.4;
-}
-/* Auf schmalen Screens nimmt der Kartenstapel fast die ganze Höhe
-   ein — dort noch deutlich zurückhaltender, sonst wirkt's als
-   Grauschleier über dem ganzen Inhalt statt als Rand-Detail. */
-@media (max-width: 767px) {
-  :root {
-    --frost-intensity: 0.2;
-  }
-}
-
-@keyframes frost-breathe {
-  0%,
-  100% {
-    opacity: calc(var(--frost-intensity) * 0.75);
-  }
-  50% {
-    opacity: var(--frost-intensity);
-  }
-}
-.frost-breathe {
-  animation: frost-breathe 9s ease-in-out infinite;
-  opacity: var(--frost-intensity);
-}
-
-/* ─────────────────────────────────────────────
-   Lade-Spinner (Ersatz für "Loading Experience")
-   ───────────────────────────────────────────── */
-.frost-spin {
-  animation: spin 1.3s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .frost-breathe {
-    animation: none;
-    opacity: var(--frost-intensity);
-  }
-  .frost-spin {
-    animation: none;
   }
 }
