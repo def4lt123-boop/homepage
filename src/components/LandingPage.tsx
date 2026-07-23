@@ -77,6 +77,14 @@ export default function LandingPage() {
         {/* Frost am Bildschirmrand — blendet mit der UI ein */}
         <FrostOverlay active={uiVisible} />
 
+        {/* Sanfter Übergang unten: statt eines harten Schnitts in das
+            Schwarz der Projekte-Sektion blendet der Hero-Hintergrund
+            schon vorher darauf zu aus. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-[24vh] bg-gradient-to-b from-transparent to-black"
+        />
+
         {/* UI-Layer über dem Canvas */}
         <UIOverlay visible={uiVisible} />
       </section>

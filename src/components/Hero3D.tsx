@@ -771,11 +771,78 @@ function FlyingLetters({
 
 /* ─────────────────────────────── Kamera-Rig ─────────────────────────────── */
 
+/**
+ * Neige-Parallax fürs Handy (DeviceOrientation statt Maus).
+ * iOS 13+ verlangt eine explizite Permission-Anfrage aus einer
+ * User-Geste heraus — wir hängen die deshalb an die erste Berührung
+ * irgendwo auf der Seite (kein extra Button/Prompt nötig). Android
+ * & Desktop brauchen keine Freigabe und starten sofort.
+ */
+function useDeviceTilt(enabled: boolean) {
+  const tilt = useRef({ x: 0, y: 0 });
+  const baseline = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return;
+
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      if (e.gamma == null || e.beta == null) return;
+      // Erste Messung als Referenzhaltung nehmen — Handys werden nicht
+      // flach, sondern meist leicht angekippt gehalten.
+      if (baseline.current === null) baseline.current = e.beta;
+
+      const gamma = THREE.MathUtils.clamp(e.gamma, -28, 28) / 28; // links/rechts
+      const betaDelta =
+        THREE.MathUtils.clamp(e.beta - baseline.current, -22, 22) / 22; // vor/zurück
+
+      tilt.current.x = gamma;
+      tilt.current.y = betaDelta;
+    };
+
+    let cancelled = false;
+    const attach = () =>
+      window.addEventListener("deviceorientation", handleOrientation);
+
+    type DOEWithPermission = typeof DeviceOrientationEvent & {
+      requestPermission?: () => Promise<"granted" | "denied">;
+    };
+    const DOE = window.DeviceOrientationEvent as DOEWithPermission | undefined;
+
+    if (typeof DOE?.requestPermission === "function") {
+      const onFirstTouch = () => {
+        DOE.requestPermission!()
+          .then((result) => {
+            if (result === "granted" && !cancelled) attach();
+          })
+          .catch(() => {
+            /* Nutzer hat abgelehnt — Kamera bleibt einfach ruhig */
+          });
+      };
+      window.addEventListener("touchend", onFirstTouch, { once: true });
+      return () => {
+        cancelled = true;
+        window.removeEventListener("touchend", onFirstTouch);
+        window.removeEventListener("deviceorientation", handleOrientation);
+      };
+    }
+
+    attach();
+    return () => {
+      cancelled = true;
+      window.removeEventListener("deviceorientation", handleOrientation);
+    };
+  }, [enabled]);
+
+  return tilt;
+}
+
 function CameraRig({ skipIntro = false }: { skipIntro?: boolean }) {
   const { camera } = useThree();
   const parallax = useRef({ x: 0, y: 0 });
   const reducedMotion = usePrefersReducedMotion();
+  const isMobile = useIsMobile();
   const noAnim = skipIntro || reducedMotion;
+  const tilt = useDeviceTilt(isMobile && !reducedMotion);
 
   useEffect(() => {
     if (noAnim) {
@@ -797,12 +864,15 @@ function CameraRig({ skipIntro = false }: { skipIntro?: boolean }) {
 
   useFrame((state) => {
     // Bei reduzierter Bewegung bleibt die Kamera ruhig stehen, statt
-    // der Maus/dem Finger endlos zu folgen.
+    // der Maus/dem Finger/der Neigung endlos zu folgen.
     if (reducedMotion) return;
 
     const p = parallax.current;
-    p.x += (state.pointer.x * 0.5 - p.x) * 0.035;
-    p.y += (state.pointer.y * 0.3 - p.y) * 0.035;
+    // Handy: Neigung steuert die Parallax. Desktop: Maus wie bisher.
+    const targetX = isMobile ? tilt.current.x * 0.45 : state.pointer.x * 0.5;
+    const targetY = isMobile ? tilt.current.y * 0.28 : state.pointer.y * 0.3;
+    p.x += (targetX - p.x) * 0.035;
+    p.y += (targetY - p.y) * 0.035;
 
     state.camera.position.x = p.x;
     state.camera.lookAt(0, p.y * -0.3, 0);
