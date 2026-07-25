@@ -104,11 +104,11 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
       <motion.span
         variants={{ hover: { scale: 1.03 } }}
         transition={{ type: "spring", stiffness: 260, damping: 22 }}
-        className="relative z-10 flex items-center justify-between gap-4 px-6 py-5"
+        className="relative z-10 flex items-center justify-between gap-4 px-5 py-3.5"
       >
         <span className="flex flex-col gap-0.5">
           <span className="flex items-center gap-1.5">
-            <span className="text-[15px] font-semibold tracking-tight text-white">
+            <span className="text-[14px] font-semibold tracking-tight text-white">
               {item.title}
             </span>
             {item.locked && (
@@ -129,14 +129,14 @@ function GlassCard({ item, index }: { item: LinkItem; index: number }) {
               </svg>
             )}
           </span>
-          <span className="text-[12px] font-medium text-white/45 transition-colors duration-500 group-hover:text-white/60">
+          <span className="text-[11px] font-medium text-white/45 transition-colors duration-500 group-hover:text-white/60">
             {item.subtitle}
           </span>
         </span>
 
         {/* Pfeil — gleitet beim Hover dezent nach rechts */}
         <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full
                      border border-white/[0.1] bg-white/[0.05] text-white/60
                      transition-all duration-500 ease-out
                      group-hover:translate-x-0.5 group-hover:border-[#7ec2ff]/40
@@ -191,7 +191,7 @@ export default function UIOverlay({ visible }: { visible: boolean }) {
       </motion.header>
 
       {/* Unteres Drittel: Tagline + Glas-Cards */}
-      <div className="mt-auto flex flex-col items-center gap-7 px-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pb-16">
+      <div className="mt-auto flex flex-col items-center gap-5 px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pb-10">
         <motion.p
           variants={{
             hidden: { opacity: 0, y: reducedMotion ? 0 : 16 },
@@ -206,7 +206,7 @@ export default function UIOverlay({ visible }: { visible: boolean }) {
           Entdecke meine Projekte.
         </motion.p>
 
-        <div className="flex w-full max-w-sm flex-col items-stretch gap-3.5 sm:max-w-none sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center sm:gap-5">
+        <div className="flex w-full max-w-sm flex-col items-stretch gap-2.5 sm:max-w-none sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3.5">
           {LINKS.map((item, i) => (
             <GlassCard key={item.href} item={item} index={i} />
           ))}
