@@ -39,6 +39,11 @@ const LINKS: LinkItem[] = [
     href: "https://eskalero.vercel.app/",
   },
   {
+    title: "Bopster Bingo",
+    subtitle: "Bingo fürs Hitster-Spiel",
+    href: "https://bopster-bingo.vercel.app/",
+  },
+  {
     title: "Springerplan",
     subtitle: "Geschützt · Team-Login",
     href: "https://springerplan.vercel.app/",

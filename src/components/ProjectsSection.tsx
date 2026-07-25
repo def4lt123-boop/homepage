@@ -55,6 +55,14 @@ const PROJECTS: Project[] = [
     accent: "#ff9f7e",
   },
   {
+    title: "Bopster Bingo",
+    subtitle: "Bingo fürs Hitster-Spiel",
+    description: "Digitaler Bingo-Block für Hitster – dein Handy statt Papierblock.",
+    href: "https://bopster-bingo.vercel.app/",
+    image: "/previews/bopster-bingo.jpg",
+    accent: "#ffd97e",
+  },
+  {
     title: "Springerplan",
     subtitle: "Schicht- & Springer-Planung",
     description:
