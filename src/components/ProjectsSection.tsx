@@ -63,6 +63,15 @@ const PROJECTS: Project[] = [
     accent: "#ffd97e",
   },
   {
+    title: "Der Dümmste fliegt",
+    subtitle: "Live-Quiz für die Gruppe",
+    description:
+      "Party-Quizmaster mit Runden, Herzen pro Spieler und eigener Fragen-Datenbank – wer patzt, fliegt raus.",
+    href: "https://derduemmstefliegt.vercel.app/",
+    image: "/previews/der-duemmste-fliegt.jpg",
+    accent: "#ffb454",
+  },
+  {
     title: "Springerplan",
     subtitle: "Schicht- & Springer-Planung",
     description:
