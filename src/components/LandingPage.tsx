@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import UIOverlay, { LINK_COUNT } from "./UIOverlay";
 import ProjectsSection from "./ProjectsSection";
 import FrostOverlay from "./FrostOverlay";
+import HeroErrorBoundary from "./HeroErrorBoundary";
 
 /**
  * LandingPage
@@ -68,11 +69,13 @@ export default function LandingPage() {
     <main className="relative w-full bg-black">
       {/* ── Hero: ein voller Viewport, Leinwand fürs 3D-Intro ── */}
       <section className="relative h-[100svh] w-full overflow-hidden supports-[height:100dvh]:h-dvh">
-        <Hero3D
-          onIntroComplete={handleIntroComplete}
-          cardCount={LINK_COUNT}
-          skipIntro={skipIntro}
-        />
+        <HeroErrorBoundary>
+          <Hero3D
+            onIntroComplete={handleIntroComplete}
+            cardCount={LINK_COUNT}
+            skipIntro={skipIntro}
+          />
+        </HeroErrorBoundary>
 
         {/* Frost am Bildschirmrand — blendet mit der UI ein */}
         <FrostOverlay active={uiVisible} />

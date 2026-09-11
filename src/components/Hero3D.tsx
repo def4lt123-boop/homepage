@@ -16,7 +16,7 @@
  * - Kühle Winter-Beleuchtung, frostiger Hintergrund
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
@@ -1056,11 +1056,13 @@ export default function Hero3D({
 
         <CameraRig skipIntro={skipIntro} />
         <WinterLighting />
-        <FlyingLetters
-          onIntroComplete={onIntroComplete}
-          cardCount={cardCount}
-          skipIntro={skipIntro}
-        />
+        <Suspense fallback={null}>
+          <FlyingLetters
+            onIntroComplete={onIntroComplete}
+            cardCount={cardCount}
+            skipIntro={skipIntro}
+          />
+        </Suspense>
         <WarpStreaks skip={skipIntro} />
 
         {/* Kristall-Schneeflocken — endloses Herabrieseln */}
