@@ -684,8 +684,8 @@ function FlyingLetters({
     const basePortraitLift = portraitStrength * 1.6;
 
     const CARD_BASELINE = 2; // ursprüngliche Kalibrierung (Flos Tools + Flos Rätsel)
-    const LIFT_PER_EXTRA_CARD = 0.42; // world units pro zusätzlicher gestapelter Card (kompaktere Cards → weniger Höhe pro Stück)
-    const TAGLINE_CLEARANCE = 0.35; // extra Puffer, damit "Entdecke meine Projekte" frei bleibt
+    const LIFT_PER_EXTRA_CARD = 0.5; // world units pro zusätzlicher gestapelter Card
+    const TAGLINE_CLEARANCE = 0.55; // extra Puffer, damit "Entdecke meine Projekte" frei bleibt
     const extraCards = Math.max(0, cardCount - CARD_BASELINE);
     const extraLift =
       portraitStrength *
