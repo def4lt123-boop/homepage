@@ -39,7 +39,20 @@ export default class HeroErrorBoundary extends Component<
 
   render() {
     if (this.state.hasError) {
-      return <div className="absolute inset-0 bg-black" aria-hidden />;
+      // Kein WebGL/3D möglich (z. B. Grafiktreiber-Problem oder
+      // Hardwarebeschleunigung deaktiviert) — statt leerer schwarzer
+      // Fläche wenigstens ein ruhiger, markentreuer Text-Ersatz an
+      // ungefähr der Stelle, an der sonst der Eis-Schriftzug steht.
+      return (
+        <div className="absolute inset-0 flex items-start justify-center bg-black pt-[24vh] sm:pt-[22vh]">
+          <h1
+            className="select-none px-6 text-center text-[13vw] font-bold tracking-tight text-white/90 sm:text-6xl md:text-7xl"
+            style={{ textShadow: "0 0 46px rgba(140,200,255,0.28)" }}
+          >
+            Flo&apos;s Websites
+          </h1>
+        </div>
+      );
     }
     return this.props.children;
   }
