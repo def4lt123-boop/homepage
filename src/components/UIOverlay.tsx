@@ -44,6 +44,11 @@ const LINKS: LinkItem[] = [
     href: "https://bopster-bingo.vercel.app/",
   },
   {
+    title: "Der Dümmste fliegt",
+    subtitle: "Live-Quiz für die Gruppe",
+    href: "https://derduemmstefliegt.vercel.app/",
+  },
+  {
     title: "Springerplan",
     subtitle: "Geschützt · Team-Login",
     href: "https://springerplan.vercel.app/",
